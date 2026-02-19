@@ -11,7 +11,9 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 1: Scraping, loading, cleaning, indexing, validation, baseline metrics
 - [x] Phase 2: Chunking strategies (`02_chunking_strategies.ipynb`, `src/ingestion/chunkers.py`)
 - [x] Phase 3: Embeddings comparison (`03_embeddings_comparison.ipynb`, `src/embeddings/models.py`)
-- [ ] Phase 4-12: See `RAG_PROJECT.md`
+- [x] Phase 4: Retrieval methods comparison (`04_retrieval_methods.ipynb`, `src/retrieval/`)
+- [x] Phase 5: Query translation (`05_query_translation.ipynb`, `src/chains/query_translation.py`)
+- [ ] Phase 6-12: See `RAG_PROJECT.md`
 
 ## Tech Stack
 
