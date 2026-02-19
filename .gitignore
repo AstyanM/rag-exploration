@@ -22,7 +22,7 @@ env/
 # Data (large files - not tracked in git)
 data/raw/*.json
 data/processed/
-vectorstore/chroma_db/
+vectorstore/
 RAG_PROJECT.md
 
 # Results (regenerable)

@@ -10,7 +10,7 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 0: Project structure, dependencies, configs
 - [x] Phase 1: Scraping, loading, cleaning, indexing, validation, baseline metrics
 - [x] Phase 2: Chunking strategies (`02_chunking_strategies.ipynb`, `src/ingestion/chunkers.py`)
-- [ ] Phase 3: Embeddings comparison
+- [x] Phase 3: Embeddings comparison (`03_embeddings_comparison.ipynb`, `src/embeddings/models.py`)
 - [ ] Phase 4-12: See `RAG_PROJECT.md`
 
 ## Tech Stack
