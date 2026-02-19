@@ -1,0 +1,104 @@
+# ──────────────────────────────────────────────
+# Default RAG Pipeline Configuration
+# ──────────────────────────────────────────────
+
+llm:
+  provider: ollama
+  model: mistral
+  temperature: 0.1
+  top_p: 0.9
+  num_ctx: 4096
+
+embeddings:
+  provider: ollama
+  model: nomic-embed-text
+
+chunking:
+  strategy: recursive
+  chunk_size: 1000
+  chunk_overlap: 200
+  separators:
+    - "\n\n"
+    - "\n"
+    - " "
+    - ""
+
+vectorstore:
+  provider: chroma
+  persist_directory: ./vectorstore/chroma_db
+  collection_name: langchain_docs
+
+retrieval:
+  strategy: hybrid
+  dense:
+    search_type: mmr
+    k: 10
+    fetch_k: 20
+    lambda_mult: 0.7
+  sparse:
+    k: 10
+  hybrid:
+    weights: [0.5, 0.5]
+  final_k: 5
+
+reranking:
+  enabled: true
+  model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  top_k: 5
+
+query_translation:
+  enabled: false
+  strategy: none
+  multi_query:
+    num_queries: 3
+  hyde:
+    num_generations: 1
+
+routing:
+  enabled: false
+  strategy: semantic
+  collections:
+    - name: tutorials
+      description: "Step-by-step guides and tutorials"
+    - name: api_reference
+      description: "API documentation and class references"
+    - name: concepts
+      description: "Conceptual explanations and architecture"
+
+generation:
+  prompt_template: |
+    You are a helpful assistant that answers questions about the LangChain Python framework.
+    Use the following retrieved context to answer the question.
+    If you cannot find the answer in the context, say so clearly.
+    Always cite which part of the context supports your answer.
+
+    Context:
+    {context}
+
+    Question: {question}
+
+    Answer:
+
+evaluation:
+  dataset_path: ./data/evaluation/questions.json
+  metrics:
+    - faithfulness
+    - answer_relevancy
+    - context_precision
+    - context_recall
+
+scraping:
+  base_url: "https://python.langchain.com"
+  sitemap_url: "https://python.langchain.com/sitemap.xml"
+  max_depth: 3
+  timeout: 30
+  output_dir: ./data/raw
+  sections:
+    - path: /docs/tutorials/
+      name: tutorials
+    - path: /docs/how_to/
+      name: how_to
+    - path: /docs/concepts/
+      name: concepts
+    - path: /api_reference/
+      name: api_reference
