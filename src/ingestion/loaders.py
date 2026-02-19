@@ -5,9 +5,17 @@ Loads scraped documents from JSON files back into LangChain Document objects.
 """
 
 import json
+import re
 from pathlib import Path
 
 from langchain_core.documents import Document
+
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n?", re.DOTALL)
+
+
+def _strip_frontmatter(text: str) -> str:
+    """Remove YAML frontmatter (---...---) from the beginning of a document."""
+    return _FRONTMATTER_RE.sub("", text).lstrip("\n")
 
 
 def load_scraped_documents(path: str = "./data/raw/langchain_docs.json") -> list[Document]:
@@ -32,7 +40,7 @@ def load_scraped_documents(path: str = "./data/raw/langchain_docs.json") -> list
 
     documents = [
         Document(
-            page_content=doc["page_content"],
+            page_content=_strip_frontmatter(doc["page_content"]),
             metadata=doc["metadata"],
         )
         for doc in raw_docs

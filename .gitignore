@@ -16,6 +16,8 @@ env/
 .idea/
 *.swp
 *.swo
+.serena/
+.claude/
 
 # Data (large files - not tracked in git)
 data/raw/*.json
