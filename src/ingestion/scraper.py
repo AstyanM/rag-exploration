@@ -1,66 +1,45 @@
 """
 LangChain documentation scraper.
 
-Scrapes the LangChain Python documentation from python.langchain.com,
-extracts main content, and saves documents as serialized JSON for
-offline processing.
+Downloads MDX documentation files directly from the langchain-ai/docs
+GitHub repository. This approach is more reliable than web scraping
+since the site is a Mintlify SPA that renders content client-side.
 """
 
+import base64
 import json
 import logging
 import re
 import time
 from pathlib import Path
-from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-
-def bs4_extractor(html: str) -> str:
-    """Extract main text content from HTML, removing navigation and boilerplate."""
-    soup = BeautifulSoup(html, "lxml")
-
-    # Remove non-content elements
-    for tag in soup.find_all(["nav", "header", "footer", "script", "style", "aside"]):
-        tag.decompose()
-
-    # Try to find the main content area
-    main = soup.find("main") or soup.find("article") or soup.find("div", {"role": "main"})
-    if main is None:
-        main = soup
-
-    return main.get_text(separator="\n", strip=True)
+GITHUB_API = "https://api.github.com"
+REPO = "langchain-ai/docs"
+DOCS_BASE_PATH = "src/oss"
+SITE_BASE_URL = "https://python.langchain.com/oss"
 
 
-def extract_title(html: str) -> str:
-    """Extract the page title from HTML."""
-    soup = BeautifulSoup(html, "lxml")
-    # Try h1 first, then <title>
-    h1 = soup.find("h1")
-    if h1:
-        return h1.get_text(strip=True)
-    title_tag = soup.find("title")
-    if title_tag:
-        return title_tag.get_text(strip=True)
-    return "Untitled"
-
-
-def classify_section(url: str) -> str:
-    """Classify a URL into a documentation section."""
-    path = urlparse(url).path.lower()
-    if "/tutorials/" in path:
-        return "tutorials"
-    if "/how_to/" in path or "/how-to/" in path:
-        return "how_to"
+def classify_section(file_path: str) -> str:
+    """Classify a file path into a documentation section."""
+    path = file_path.lower()
+    if "/langchain/" in path:
+        return "langchain"
+    if "/langgraph/" in path:
+        return "langgraph"
     if "/concepts/" in path:
         return "concepts"
-    if "/api_reference/" in path or "/api/" in path:
-        return "api_reference"
-    if "/integrations/" in path:
+    if "/reference/" in path:
+        return "reference"
+    if "/contributing/" in path:
+        return "contributing"
+    if "/deepagents/" in path:
+        return "deepagents"
+    if "/integrations/" in path or "/python/integrations/" in path:
         return "integrations"
     return "other"
 
@@ -80,112 +59,183 @@ def classify_content_type(text: str) -> str:
     return "narrative"
 
 
-def fetch_sitemap_urls(sitemap_url: str) -> list[str]:
-    """Fetch all URLs from the sitemap XML."""
-    logger.info("Fetching sitemap from %s", sitemap_url)
-    resp = requests.get(sitemap_url, timeout=30)
+def extract_title_from_mdx(content: str) -> str:
+    """Extract the title from an MDX file's frontmatter or first heading."""
+    # Try frontmatter title
+    fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if fm_match:
+        for line in fm_match.group(1).split("\n"):
+            if line.strip().startswith("title:"):
+                title = line.split(":", 1)[1].strip().strip("\"'")
+                return title
+            if line.strip().startswith("sidebarTitle:"):
+                title = line.split(":", 1)[1].strip().strip("\"'")
+                return title
+
+    # Try first markdown heading
+    heading_match = re.search(r"^#+\s+(.+)$", content, re.MULTILINE)
+    if heading_match:
+        return heading_match.group(1).strip()
+
+    return "Untitled"
+
+
+def file_path_to_url(file_path: str) -> str:
+    """Convert a repo file path to the corresponding documentation URL."""
+    # src/oss/langchain/overview.mdx -> /oss/python/langchain/overview
+    relative = file_path.replace(DOCS_BASE_PATH + "/", "")
+    relative = re.sub(r"\.mdx$", "", relative)
+    return f"{SITE_BASE_URL}/{relative}"
+
+
+def fetch_file_tree(
+    include_integrations: bool = False,
+    github_token: str | None = None,
+) -> list[dict]:
+    """Fetch the complete file tree from the GitHub API."""
+    logger.info("Fetching file tree from GitHub...")
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+
+    resp = requests.get(
+        f"{GITHUB_API}/repos/{REPO}/git/trees/main?recursive=1",
+        headers=headers,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get("truncated"):
+        logger.warning("GitHub tree was truncated — some files may be missing")
+
+    tree = data.get("tree", [])
+
+    # Filter for MDX files under src/oss/
+    mdx_files = []
+    for item in tree:
+        path = item["path"]
+        if not path.startswith(f"{DOCS_BASE_PATH}/") or not path.endswith(".mdx"):
+            continue
+        # Skip JavaScript docs
+        if "/javascript/" in path:
+            continue
+        # Optionally skip integration pages (there are ~1300 of them)
+        if not include_integrations and "/integrations/" in path:
+            continue
+        mdx_files.append(item)
+
+    logger.info("Found %d MDX files to download", len(mdx_files))
+    return mdx_files
+
+
+def download_file_content(
+    file_path: str,
+    github_token: str | None = None,
+) -> str | None:
+    """Download a single file's content from GitHub."""
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+
+    resp = requests.get(
+        f"{GITHUB_API}/repos/{REPO}/contents/{file_path}",
+        headers=headers,
+        timeout=30,
+    )
+    if resp.status_code == 403:
+        # Rate limit hit
+        logger.warning("GitHub API rate limit hit. Consider using a token.")
+        return None
     resp.raise_for_status()
 
-    soup = BeautifulSoup(resp.content, "lxml-xml")
-    urls = [loc.text.strip() for loc in soup.find_all("loc")]
-    logger.info("Found %d URLs in sitemap", len(urls))
-    return urls
+    data = resp.json()
+    if data.get("encoding") == "base64":
+        return base64.b64decode(data["content"]).decode("utf-8")
+    return data.get("content", "")
 
 
-def filter_urls(urls: list[str], base_url: str, sections: list[dict] | None = None) -> list[str]:
-    """Filter URLs to keep only relevant documentation pages."""
-    filtered = []
-    base_parsed = urlparse(base_url)
+def download_raw_file(
+    file_path: str,
+    github_token: str | None = None,
+) -> str | None:
+    """Download a file using the raw content URL (doesn't count against API rate limit)."""
+    url = f"https://raw.githubusercontent.com/{REPO}/main/{file_path}"
+    headers = {}
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
 
-    for url in urls:
-        parsed = urlparse(url)
-        # Must be same host
-        if parsed.netloc != base_parsed.netloc:
-            continue
-        # Skip non-doc pages
-        path = parsed.path.lower()
-        if any(skip in path for skip in [
-            "/blog/", "/changelog/", "/_static/", "/search", ".xml", ".json",
-        ]):
-            continue
-        # Must be under /docs/ or /api_reference/
-        if "/docs/" in path or "/api_reference/" in path:
-            filtered.append(url)
-
-    logger.info("Filtered to %d documentation URLs", len(filtered))
-    return filtered
-
-
-def scrape_page(url: str, timeout: int = 30) -> dict | None:
-    """Scrape a single page and return a document dict."""
     try:
-        resp = requests.get(url, timeout=timeout)
+        resp = requests.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
-        html = resp.text
+        return resp.text
+    except requests.RequestException as e:
+        logger.warning("Failed to download %s: %s", file_path, e)
+        return None
 
-        content = bs4_extractor(html)
-        if not content or len(content.strip()) < 50:
-            logger.debug("Skipping %s — content too short", url)
-            return None
 
-        title = extract_title(html)
-        section = classify_section(url)
+def scrape_langchain_docs(
+    output_dir: str = "./data/raw",
+    include_integrations: bool = False,
+    github_token: str | None = None,
+    max_pages: int | None = None,
+    delay: float = 0.1,
+    **kwargs,
+) -> list[dict]:
+    """
+    Download LangChain documentation from the GitHub repository.
+
+    Args:
+        output_dir: Directory to save scraped documents.
+        include_integrations: Whether to include integration docs (~1300 pages).
+        github_token: GitHub personal access token (for higher rate limits).
+        max_pages: Maximum number of pages to download (None for all).
+        delay: Delay between requests in seconds.
+
+    Returns:
+        List of document dicts with page_content and metadata.
+    """
+    # Fetch file tree
+    mdx_files = fetch_file_tree(
+        include_integrations=include_integrations,
+        github_token=github_token,
+    )
+
+    if max_pages is not None:
+        mdx_files = mdx_files[:max_pages]
+        logger.info("Limited to %d pages", max_pages)
+
+    # Download each file
+    documents = []
+    failed = 0
+    for item in tqdm(mdx_files, desc="Downloading docs"):
+        file_path = item["path"]
+
+        content = download_raw_file(file_path, github_token=github_token)
+        if content is None or len(content.strip()) < 50:
+            failed += 1
+            continue
+
+        title = extract_title_from_mdx(content)
+        section = classify_section(file_path)
         content_type = classify_content_type(content)
+        url = file_path_to_url(file_path)
 
-        return {
+        documents.append({
             "page_content": content,
             "metadata": {
                 "source": url,
+                "github_path": file_path,
                 "title": title,
                 "section": section,
                 "content_type": content_type,
                 "content_length": len(content),
             },
-        }
-    except requests.RequestException as e:
-        logger.warning("Failed to scrape %s: %s", url, e)
-        return None
+        })
 
-
-def scrape_langchain_docs(
-    sitemap_url: str = "https://python.langchain.com/sitemap.xml",
-    base_url: str = "https://python.langchain.com",
-    output_dir: str = "./data/raw",
-    timeout: int = 30,
-    delay: float = 0.5,
-    max_pages: int | None = None,
-) -> list[dict]:
-    """
-    Scrape the LangChain documentation.
-
-    Args:
-        sitemap_url: URL of the sitemap XML.
-        base_url: Base URL to filter pages.
-        output_dir: Directory to save scraped documents.
-        timeout: HTTP request timeout in seconds.
-        delay: Delay between requests in seconds (be polite).
-        max_pages: Maximum number of pages to scrape (None for all).
-
-    Returns:
-        List of document dicts with page_content and metadata.
-    """
-    # Fetch and filter URLs
-    all_urls = fetch_sitemap_urls(sitemap_url)
-    doc_urls = filter_urls(all_urls, base_url)
-
-    if max_pages is not None:
-        doc_urls = doc_urls[:max_pages]
-        logger.info("Limited to %d pages", max_pages)
-
-    # Scrape each page
-    documents = []
-    for url in tqdm(doc_urls, desc="Scraping pages"):
-        doc = scrape_page(url, timeout=timeout)
-        if doc is not None:
-            documents.append(doc)
         time.sleep(delay)
 
-    logger.info("Successfully scraped %d documents", len(documents))
+    logger.info("Successfully downloaded %d documents (%d failed)", len(documents), failed)
 
     # Save to disk
     output_path = Path(output_dir)
@@ -197,7 +247,7 @@ def scrape_langchain_docs(
         json.dump(documents, f, ensure_ascii=False, indent=2)
     logger.info("Saved all documents to %s", all_docs_path)
 
-    # Save per-section files for easier inspection
+    # Save per-section files
     by_section: dict[str, list] = {}
     for doc in documents:
         section = doc["metadata"]["section"]
@@ -211,11 +261,11 @@ def scrape_langchain_docs(
 
     # Print summary
     print(f"\n{'='*60}")
-    print(f"Scraping Summary")
+    print("Scraping Summary")
     print(f"{'='*60}")
-    print(f"Total URLs in sitemap:    {len(all_urls)}")
-    print(f"Filtered documentation:   {len(doc_urls)}")
-    print(f"Successfully scraped:     {len(documents)}")
+    print(f"Total MDX files found:    {len(mdx_files)}")
+    print(f"Successfully downloaded:  {len(documents)}")
+    print(f"Failed:                   {failed}")
     print(f"{'─'*60}")
     for section, docs in sorted(by_section.items()):
         print(f"  {section:20s}: {len(docs):4d} pages")

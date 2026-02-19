@@ -88,17 +88,8 @@ evaluation:
     - context_recall
 
 scraping:
-  base_url: "https://python.langchain.com"
-  sitemap_url: "https://python.langchain.com/sitemap.xml"
-  max_depth: 3
-  timeout: 30
+  source: github
+  github_repo: langchain-ai/docs
+  github_docs_path: src/oss
+  include_integrations: false
   output_dir: ./data/raw
-  sections:
-    - path: /docs/tutorials/
-      name: tutorials
-    - path: /docs/how_to/
-      name: how_to
-    - path: /docs/concepts/
-      name: concepts
-    - path: /api_reference/
-      name: api_reference
