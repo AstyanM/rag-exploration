@@ -112,3 +112,131 @@ def chunk_stats_table(chunks: list[Document]) -> pd.DataFrame:
             max(sizes),
         ],
     }).set_index("metric").round(0).astype(int)
+
+
+# ── Phase 4: Retrieval comparison display helpers ─────────────
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+
+
+def display_strategy_comparison(df: pd.DataFrame) -> None:
+    """Display a styled table highlighting best/worst per metric.
+
+    Expects a DataFrame with strategies as rows and metrics as columns.
+    Numeric columns are highlighted: green for best, red for worst.
+    For latency_ms, lower is better; for all others, higher is better.
+    """
+    lower_better = {"latency_ms", "avg_latency_ms"}
+    numeric_cols = df.select_dtypes(include="number").columns
+
+    def highlight(col: pd.Series) -> list[str]:
+        styles = [""] * len(col)
+        if col.name not in numeric_cols:
+            return styles
+        if col.isna().all():
+            return styles
+        is_lower = col.name in lower_better
+        best_idx = col.idxmin() if is_lower else col.idxmax()
+        worst_idx = col.idxmax() if is_lower else col.idxmin()
+        for i, idx in enumerate(col.index):
+            if idx == best_idx:
+                styles[i] = "background-color: #d4edda; font-weight: bold"
+            elif idx == worst_idx:
+                styles[i] = "background-color: #f8d7da"
+        return styles
+
+    styled = df.style.apply(highlight, axis=0).format(
+        {c: "{:.4f}" for c in numeric_cols if c != "latency_ms" and c != "avg_latency_ms"},
+    ).format(
+        {c: "{:.1f}" for c in numeric_cols if c in lower_better},
+    )
+    display(HTML(styled.to_html()))
+
+
+def display_category_breakdown(
+    df: pd.DataFrame,
+    metric: str = "precision_at_k",
+    title: str = "Performance par categorie",
+) -> None:
+    """Display a grouped bar chart comparing strategies by query category.
+
+    Args:
+        df: DataFrame with columns: strategy, category, and the metric.
+        metric: Which metric column to plot.
+        title: Chart title.
+    """
+    pivot = df.pivot_table(
+        index="category", columns="strategy", values=metric, aggfunc="mean",
+    )
+
+    ax = pivot.plot(kind="bar", figsize=(12, 5), width=0.8)
+    ax.set_title(title, fontsize=14)
+    ax.set_ylabel(metric)
+    ax.set_xlabel("")
+    ax.legend(title="Strategie", bbox_to_anchor=(1.02, 1), loc="upper left")
+    plt.xticks(rotation=0)
+    plt.tight_layout()
+    plt.show()
+
+
+def display_latency_comparison(df: pd.DataFrame) -> None:
+    """Display a horizontal bar chart of average latency per strategy.
+
+    Expects a DataFrame with 'strategy' and 'avg_latency_ms' columns.
+    """
+    df_sorted = df.sort_values("avg_latency_ms")
+    colors = sns.color_palette("viridis", len(df_sorted))
+
+    fig, ax = plt.subplots(figsize=(10, max(4, len(df_sorted) * 0.5)))
+    ax.barh(df_sorted["strategy"], df_sorted["avg_latency_ms"], color=colors)
+    ax.set_xlabel("Latence moyenne (ms)")
+    ax.set_title("Latence par strategie de retrieval")
+
+    for i, (_, row) in enumerate(df_sorted.iterrows()):
+        ax.text(
+            row["avg_latency_ms"] + 0.5, i,
+            f'{row["avg_latency_ms"]:.1f} ms',
+            va="center", fontsize=10,
+        )
+
+    plt.tight_layout()
+    plt.show()
+
+
+def display_radar_chart(
+    df: pd.DataFrame,
+    metrics: list[str],
+    strategy_col: str = "strategy",
+    title: str = "Comparaison radar des strategies",
+) -> None:
+    """Display a radar chart comparing strategies across multiple metrics.
+
+    Args:
+        df: DataFrame with one row per strategy.
+        metrics: List of metric column names to plot.
+        strategy_col: Column containing strategy names.
+        title: Chart title.
+    """
+    strategies = df[strategy_col].tolist()
+    num_metrics = len(metrics)
+    angles = np.linspace(0, 2 * np.pi, num_metrics, endpoint=False).tolist()
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"polar": True})
+    colors = sns.color_palette("husl", len(strategies))
+
+    for i, strategy in enumerate(strategies):
+        row = df[df[strategy_col] == strategy].iloc[0]
+        values = [row[m] for m in metrics]
+        values += values[:1]
+        ax.plot(angles, values, "o-", linewidth=2, label=strategy, color=colors[i])
+        ax.fill(angles, values, alpha=0.1, color=colors[i])
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(metrics, fontsize=10)
+    ax.set_title(title, fontsize=14, pad=20)
+    ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
+    plt.tight_layout()
+    plt.show()

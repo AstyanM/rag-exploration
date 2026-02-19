@@ -1,0 +1,177 @@
+[
+  {
+    "id": "c01",
+    "query": "What is RAG and how does it work?",
+    "category": "conceptual",
+    "relevant_sources": ["langchain/rag", "langchain/knowledge-base", "langchain/retrieval"],
+    "relevant_keywords": ["RAG", "retrieval", "augmented", "generation"]
+  },
+  {
+    "id": "c02",
+    "query": "What is the difference between an agent and a chain in LangChain?",
+    "category": "conceptual",
+    "relevant_sources": ["langchain/agents", "langchain/overview", "langchain/philosophy"],
+    "relevant_keywords": ["agent", "chain", "difference"]
+  },
+  {
+    "id": "c03",
+    "query": "What are embeddings and why are they important for retrieval?",
+    "category": "conceptual",
+    "relevant_sources": ["text_embedding", "langchain/rag", "langchain/knowledge-base"],
+    "relevant_keywords": ["embedding", "vector", "similarity"]
+  },
+  {
+    "id": "c04",
+    "query": "How does memory work in LangChain?",
+    "category": "conceptual",
+    "relevant_sources": ["concepts/memory", "langchain/long-term-memory", "langchain/short-term-memory"],
+    "relevant_keywords": ["memory", "conversation", "history"]
+  },
+  {
+    "id": "c05",
+    "query": "What is a vector store and how is it used in a RAG pipeline?",
+    "category": "conceptual",
+    "relevant_sources": ["vectorstores", "langchain/rag", "langchain/knowledge-base"],
+    "relevant_keywords": ["vector", "store", "index", "similarity"]
+  },
+  {
+    "id": "c06",
+    "query": "What is the purpose of context engineering in LLM applications?",
+    "category": "conceptual",
+    "relevant_sources": ["langchain/context-engineering", "concepts/context"],
+    "relevant_keywords": ["context", "engineering", "window"]
+  },
+  {
+    "id": "t01",
+    "query": "What parameters does RecursiveCharacterTextSplitter accept?",
+    "category": "technical",
+    "relevant_sources": ["splitters/recursive_text_splitter", "splitters/character_text_splitter"],
+    "relevant_keywords": ["RecursiveCharacterTextSplitter", "chunk_size", "chunk_overlap", "separators"]
+  },
+  {
+    "id": "t02",
+    "query": "How do I configure ChromaDB as a vector store in LangChain?",
+    "category": "technical",
+    "relevant_sources": ["vectorstores/chroma", "providers/chroma"],
+    "relevant_keywords": ["Chroma", "persist_directory", "collection"]
+  },
+  {
+    "id": "t03",
+    "query": "What are the available search types for a LangChain retriever?",
+    "category": "technical",
+    "relevant_sources": ["langchain/retrieval", "langchain/rag"],
+    "relevant_keywords": ["similarity", "mmr", "search_type", "retriever"]
+  },
+  {
+    "id": "t04",
+    "query": "How does the Ollama chat model integration work in LangChain?",
+    "category": "technical",
+    "relevant_sources": ["chat/ollama", "providers/ollama", "llms/ollama"],
+    "relevant_keywords": ["Ollama", "ChatOllama", "model"]
+  },
+  {
+    "id": "t05",
+    "query": "What is the EnsembleRetriever and what parameters does it take?",
+    "category": "technical",
+    "relevant_sources": ["langchain/retrieval", "retrievers"],
+    "relevant_keywords": ["EnsembleRetriever", "weights", "retrievers"]
+  },
+  {
+    "id": "t06",
+    "query": "How do I split code files using LangChain text splitters?",
+    "category": "technical",
+    "relevant_sources": ["splitters/code_splitter", "splitters/index"],
+    "relevant_keywords": ["code", "splitter", "language", "RecursiveCharacterTextSplitter"]
+  },
+  {
+    "id": "h01",
+    "query": "How do I build a basic RAG chain in LangChain?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/rag", "langchain/knowledge-base", "langchain/quickstart"],
+    "relevant_keywords": ["RAG", "chain", "build", "retriever"]
+  },
+  {
+    "id": "h02",
+    "query": "How do I add streaming output to my LangChain application?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/streaming", "deepagents/streaming"],
+    "relevant_keywords": ["streaming", "stream", "token"]
+  },
+  {
+    "id": "h03",
+    "query": "How do I create a multi-agent system with LangGraph?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/multi-agent", "langgraph"],
+    "relevant_keywords": ["multi-agent", "handoff", "router", "LangGraph"]
+  },
+  {
+    "id": "h04",
+    "query": "How do I implement human-in-the-loop in a LangChain agent?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/human-in-the-loop", "deepagents/human-in-the-loop"],
+    "relevant_keywords": ["human-in-the-loop", "approval", "interrupt"]
+  },
+  {
+    "id": "h05",
+    "query": "How do I use tools with a LangChain chat model?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/tools", "langchain/agents"],
+    "relevant_keywords": ["tool", "bind_tools", "invoke"]
+  },
+  {
+    "id": "h06",
+    "query": "How do I add memory to a conversation chain?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/short-term-memory", "langchain/long-term-memory", "langgraph/add-memory"],
+    "relevant_keywords": ["memory", "conversation", "chat_history"]
+  },
+  {
+    "id": "h07",
+    "query": "How do I deploy a LangChain application to production?",
+    "category": "how_to",
+    "relevant_sources": ["langchain/deploy", "langchain/observability"],
+    "relevant_keywords": ["deploy", "production", "serve"]
+  },
+  {
+    "id": "e01",
+    "query": "What are the common errors when using LangChain?",
+    "category": "error_related",
+    "relevant_sources": ["common-errors", "langchain/errors"],
+    "relevant_keywords": ["error", "common", "troubleshoot"]
+  },
+  {
+    "id": "e02",
+    "query": "What causes INVALID_TOOL_RESULTS error in LangChain?",
+    "category": "error_related",
+    "relevant_sources": ["errors/INVALID_TOOL_RESULTS"],
+    "relevant_keywords": ["INVALID_TOOL_RESULTS", "tool", "error"]
+  },
+  {
+    "id": "e03",
+    "query": "How do I fix a MODEL_NOT_FOUND error with Ollama?",
+    "category": "error_related",
+    "relevant_sources": ["errors/MODEL_NOT_FOUND", "providers/ollama"],
+    "relevant_keywords": ["MODEL_NOT_FOUND", "model", "error", "Ollama"]
+  },
+  {
+    "id": "e04",
+    "query": "What causes OUTPUT_PARSING_FAILURE and how to fix it?",
+    "category": "error_related",
+    "relevant_sources": ["errors/OUTPUT_PARSING_FAILURE"],
+    "relevant_keywords": ["OUTPUT_PARSING_FAILURE", "parse", "error"]
+  },
+  {
+    "id": "e05",
+    "query": "Why does MESSAGE_COERCION_FAILURE happen in LangChain?",
+    "category": "error_related",
+    "relevant_sources": ["errors/MESSAGE_COERCION_FAILURE"],
+    "relevant_keywords": ["MESSAGE_COERCION_FAILURE", "message", "coerce"]
+  },
+  {
+    "id": "e06",
+    "query": "How do I handle rate limiting errors with LangChain models?",
+    "category": "error_related",
+    "relevant_sources": ["errors/MODEL_RATE_LIMIT", "common-errors"],
+    "relevant_keywords": ["rate_limit", "MODEL_RATE_LIMIT", "retry"]
+  }
+]

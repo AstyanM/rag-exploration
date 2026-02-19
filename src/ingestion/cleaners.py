@@ -50,6 +50,44 @@ def strip_base64_blobs(text: str, min_length: int = 200) -> str:
     return text
 
 
+def strip_mdx_imports(text: str) -> str:
+    """Remove MDX/ESM import lines (e.g. import X from '/snippets/...')."""
+    return re.sub(r"^import\s+\w+.*?;\s*$", "", text, flags=re.MULTILINE)
+
+
+def strip_js_tab_blocks(text: str) -> str:
+    """Remove :::js blocks entirely (keep only Python content).
+
+    The LangChain docs ship both Python and JS code in tab blocks
+    delimited by :::python / :::js markers. We strip the JS blocks
+    and unwrap the Python blocks (remove markers, keep content).
+    """
+    # Remove :::js ... ::: blocks (including the markers)
+    text = re.sub(r":::js\s*\n.*?:::", "", text, flags=re.DOTALL)
+    # Unwrap :::python ... ::: blocks (keep inner content)
+    text = re.sub(r":::python\s*\n", "", text)
+    # Remove remaining standalone ::: markers
+    text = re.sub(r"^:::\s*$", "", text, flags=re.MULTILINE)
+    return text
+
+
+def strip_js_code_fences(text: str) -> str:
+    """Remove JavaScript/TypeScript code fences, keep Python ones.
+
+    Pages about frontend integration contain raw JS/TS code blocks
+    (```javascript, ```typescript, ```tsx, ```jsx) that are unrelated
+    to Python usage. Strip them entirely including their content.
+    """
+    js_langs = r"(?:javascript|typescript|tsx|jsx|js|ts)"
+    text = re.sub(
+        rf"```{js_langs}[^\n]*\n.*?```",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    return text
+
+
 def strip_template_variables(text: str) -> str:
     """Remove JavaScript template literal expressions like ${variable}."""
     return re.sub(r"\$\{[^}]*\}", "", text)
@@ -73,6 +111,9 @@ def clean_document(doc: Document) -> Document:
     text = doc.page_content
 
     text = strip_frontmatter(text)
+    text = strip_mdx_imports(text)
+    text = strip_js_tab_blocks(text)
+    text = strip_js_code_fences(text)
     text = strip_mdx_jsx_tags(text)
     text = strip_base64_blobs(text)
     text = strip_template_variables(text)

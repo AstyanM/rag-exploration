@@ -38,7 +38,7 @@ The full spec is in `RAG_PROJECT.md`.
 ## Style Rules
 
 - Never use em dashes (the long dash character). Use regular dashes, commas, or parentheses instead.
-- Language: code and comments in English, user interaction in French
+- Language: everything in English (code, comments, notebooks, user interaction)
 - Notebooks: each phase has one numbered notebook, self-contained with explanations
 - Keep notebooks/utils/ helpers generic and reusable across phases
 - Follow existing patterns in `src/` (type hints, docstrings, pathlib)

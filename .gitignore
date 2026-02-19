@@ -18,6 +18,7 @@ env/
 *.swo
 .serena/
 .claude/
+.chainlit/
 
 # Data (large files - not tracked in git)
 data/raw/*.json
