@@ -13,7 +13,8 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 3: Embeddings comparison (`03_embeddings_comparison.ipynb`, `src/embeddings/models.py`)
 - [x] Phase 4: Retrieval methods comparison (`04_retrieval_methods.ipynb`, `src/retrieval/`)
 - [x] Phase 5: Query translation (`05_query_translation.ipynb`, `src/chains/query_translation.py`)
-- [ ] Phase 6-12: See `RAG_PROJECT.md`
+- [x] Phase 6: Routing (`06_routing.ipynb`, `src/chains/routing.py`)
+- [ ] Phase 7-12: See `RAG_PROJECT.md`
 
 ## Tech Stack
 
