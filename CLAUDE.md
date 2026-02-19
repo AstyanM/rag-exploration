@@ -8,9 +8,8 @@ The full spec is in `RAG_PROJECT.md`.
 ## Current Progress
 
 - [x] Phase 0: Project structure, dependencies, configs
-- [x] Phase 1 (partial): Scraping done, loader implemented, notebook `01_indexing_basics.ipynb` created
-- [ ] Phase 1 (remaining): Run the notebook (index into ChromaDB, validate queries, record metrics)
-- [ ] Phase 2: Chunking strategies (`02_chunking_strategies.ipynb`)
+- [x] Phase 1: Scraping, loading, cleaning, indexing, validation, baseline metrics
+- [x] Phase 2: Chunking strategies (`02_chunking_strategies.ipynb`, `src/ingestion/chunkers.py`)
 - [ ] Phase 3: Embeddings comparison
 - [ ] Phase 4-12: See `RAG_PROJECT.md`
 
