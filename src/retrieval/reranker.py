@@ -22,6 +22,28 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# CrossEncoder cache - avoids reloading the model on every call
+# ---------------------------------------------------------------------------
+
+class CrossEncoderCache:
+    """Process-level singleton cache for CrossEncoder models.
+
+    Loading a CrossEncoder from disk takes ~1-2 seconds. Caching it per
+    model name means the overhead is paid once per process, not per query.
+    """
+
+    _instances: dict[str, object] = {}
+
+    @classmethod
+    def get(cls, model_name: str) -> object:
+        """Return a cached CrossEncoder, loading it on first access."""
+        if model_name not in cls._instances:
+            from sentence_transformers import CrossEncoder  # type: ignore[import]
+            cls._instances[model_name] = CrossEncoder(model_name)
+        return cls._instances[model_name]
+
+
+# ---------------------------------------------------------------------------
 # Prompt
 # ---------------------------------------------------------------------------
 
@@ -99,10 +121,8 @@ def rerank_cross_encoder(
     Returns:
         RerankerResult with top_k reranked documents and their scores.
     """
-    from sentence_transformers import CrossEncoder  # type: ignore[import]
-
     start = time.perf_counter()
-    cross_encoder = CrossEncoder(model_name)
+    cross_encoder = CrossEncoderCache.get(model_name)
 
     pairs = [(query, doc.page_content) for doc in candidates]
     raw_scores: list[float] = cross_encoder.predict(pairs).tolist()

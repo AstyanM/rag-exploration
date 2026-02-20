@@ -393,6 +393,7 @@ class AdaptiveRAGState(TypedDict):
     documents: list[Document]
     generation: str
     sub_questions: list[str]   # for complex queries
+    sub_answers_text: str      # concatenated sub-question answers (complex path)
 
 
 def build_adaptive_rag(
@@ -508,7 +509,7 @@ Comprehensive answer:""",
             answer = generate_chain.invoke({"context": context, "question": sub_q})
             sub_answers.append(f"Q: {sub_q}\nA: {answer}")
 
-        return {**state, "documents": all_docs, "_sub_answers": "\n\n".join(sub_answers)}
+        return {**state, "documents": all_docs, "sub_answers_text": "\n\n".join(sub_answers)}
 
     def generate_simple(state: AdaptiveRAGState) -> AdaptiveRAGState:
         context = _build_context(state["documents"])
@@ -521,7 +522,7 @@ Comprehensive answer:""",
         return {**state, "generation": answer}
 
     def synthesize(state: AdaptiveRAGState) -> AdaptiveRAGState:
-        sub_answers = state.get("_sub_answers", "")
+        sub_answers = state.get("sub_answers_text", "")
         answer = synthesize_chain.invoke({
             "question": state["question"],
             "sub_answers": sub_answers,
@@ -560,9 +561,16 @@ Comprehensive answer:""",
 # ---------------------------------------------------------------------------
 
 def run_graph(app, question: str) -> dict:
-    """Run any compiled RAG graph and return the final state with elapsed_ms."""
+    """Run any compiled RAG graph and return the final state with elapsed_ms.
+
+    Only the ``question`` key is passed as initial state. Counter fields like
+    ``retry_count`` and ``rewrite_count`` are read with ``.get(..., 0)`` inside
+    each graph node, so they default to 0 without needing to be injected here.
+    Injecting extra keys not declared in a graph's TypedDict is an error in
+    strict LangGraph configurations.
+    """
     start = time.perf_counter()
-    result = app.invoke({"question": question, "retry_count": 0, "rewrite_count": 0})
+    result = app.invoke({"question": question})
     elapsed_ms = (time.perf_counter() - start) * 1000
     result["elapsed_ms"] = elapsed_ms
     return result

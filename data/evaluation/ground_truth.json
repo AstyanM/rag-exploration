@@ -1,0 +1,152 @@
+[
+  {
+    "id": "c01",
+    "question": "What is RAG and how does it work?",
+    "ground_truth": "RAG (Retrieval-Augmented Generation) is a technique that grounds LLM responses in external knowledge. It works in two stages: first, a retriever fetches relevant documents from a knowledge base (e.g. a vector store) using semantic similarity between the query and stored embeddings; second, the retrieved documents are injected as context into the LLM prompt, which then generates an answer grounded in that context. This reduces hallucinations and keeps responses up-to-date without retraining the model.",
+    "category": "conceptual"
+  },
+  {
+    "id": "c02",
+    "question": "What is the difference between an agent and a chain in LangChain?",
+    "ground_truth": "A chain is a fixed, deterministic sequence of steps (prompt -> LLM -> output parser -> next step) defined at construction time. An agent is dynamic: it uses an LLM to decide at runtime which tools to call and in what order, looping until it reaches a final answer. Chains are predictable and fast; agents are flexible and can handle open-ended tasks but are slower and less predictable.",
+    "category": "conceptual"
+  },
+  {
+    "id": "c03",
+    "question": "What are embeddings and why are they important for retrieval?",
+    "ground_truth": "Embeddings are dense numerical vector representations of text produced by an embedding model (e.g. nomic-embed-text). Semantically similar texts map to nearby vectors in high-dimensional space. For retrieval, both documents and queries are embedded, then approximate nearest-neighbor search (e.g. cosine similarity) finds the most relevant documents without exact keyword matching. This enables semantic search: finding conceptually related content even when wording differs.",
+    "category": "conceptual"
+  },
+  {
+    "id": "c04",
+    "question": "How does memory work in LangChain?",
+    "ground_truth": "LangChain distinguishes short-term and long-term memory. Short-term memory (in-context) keeps conversation history in the prompt window, typically as a list of (human, ai) message pairs managed by a message history object. Long-term memory persists information across sessions using external stores (vector stores, databases). In LangGraph, memory is managed via state checkpointers that save and restore graph state between runs, enabling persistent multi-turn conversations.",
+    "category": "conceptual"
+  },
+  {
+    "id": "c05",
+    "question": "What is a vector store and how is it used in a RAG pipeline?",
+    "ground_truth": "A vector store is a database optimized for storing and querying high-dimensional embedding vectors. Documents are first embedded then stored with their vectors. At query time, the query is embedded and the store returns the k nearest vectors (most similar documents) using approximate nearest neighbor algorithms. In a RAG pipeline, the vector store acts as the retrieval backend: the retriever calls it to fetch relevant chunks that are then passed as context to the LLM.",
+    "category": "conceptual"
+  },
+  {
+    "id": "c06",
+    "question": "What is the purpose of context engineering in LLM applications?",
+    "ground_truth": "Context engineering is the discipline of carefully constructing the content placed in the LLM's context window to maximize output quality. This includes selecting which documents to retrieve, how to format and truncate them, what system instructions to include, and how to structure conversation history. Good context engineering reduces hallucinations (by grounding the model), improves relevance (by filtering noise), and optimizes token usage (by staying within the context limit while including all necessary information).",
+    "category": "conceptual"
+  },
+  {
+    "id": "t01",
+    "question": "What parameters does RecursiveCharacterTextSplitter accept?",
+    "ground_truth": "RecursiveCharacterTextSplitter accepts: chunk_size (maximum number of characters per chunk, default 4000), chunk_overlap (number of characters shared between consecutive chunks to preserve context, default 200), separators (ordered list of strings to split on, default [\"\\n\\n\", \"\\n\", \" \", \"\"]), length_function (function to measure chunk length, default len), is_separator_regex (whether separators are regex patterns, default False), and add_start_index (whether to include the chunk's start position in metadata).",
+    "category": "technical"
+  },
+  {
+    "id": "t02",
+    "question": "How do I configure ChromaDB as a vector store in LangChain?",
+    "ground_truth": "Use the langchain-chroma package. To create and persist a collection: Chroma.from_documents(documents=chunks, embedding=embedding_function, collection_name=\"my_collection\", persist_directory=\"./chroma_db\"). To reload an existing collection: Chroma(collection_name=\"my_collection\", embedding_function=embedding_function, persist_directory=\"./chroma_db\"). The embedding_function must be a LangChain Embeddings instance. Use vectorstore.as_retriever() to create a retriever from the store.",
+    "category": "technical"
+  },
+  {
+    "id": "t03",
+    "question": "What are the available search types for a LangChain retriever?",
+    "ground_truth": "LangChain vector store retrievers support three search types via the search_type parameter: \"similarity\" (default) returns the k most similar documents by cosine distance; \"mmr\" (Maximal Marginal Relevance) balances relevance and diversity by penalizing redundant results, controlled by fetch_k and lambda_mult parameters; \"similarity_score_threshold\" returns only documents above a minimum similarity score set by score_threshold. These are configured via vectorstore.as_retriever(search_type=..., search_kwargs={...}).",
+    "category": "technical"
+  },
+  {
+    "id": "t04",
+    "question": "How does the Ollama chat model integration work in LangChain?",
+    "ground_truth": "The langchain-ollama package provides ChatOllama, which connects to a locally running Ollama server (default http://localhost:11434). Instantiate with ChatOllama(model=\"mistral:7b\", temperature=0.1). It implements the standard LangChain BaseChatModel interface, so it works with LCEL chains, prompt templates, and output parsers. The model name must match a model already pulled via ollama pull. Streaming is supported via .stream(). For embeddings use OllamaEmbeddings(model=\"nomic-embed-text\").",
+    "category": "technical"
+  },
+  {
+    "id": "t05",
+    "question": "What is the EnsembleRetriever and what parameters does it take?",
+    "ground_truth": "EnsembleRetriever (from langchain-classic) combines multiple retrievers using Reciprocal Rank Fusion (RRF) to merge their ranked result lists. Parameters: retrievers (list of BaseRetriever instances to combine), weights (list of floats that weight each retriever's contribution, must sum to 1.0), c (RRF constant, default 60, controls rank penalty). A common use case is combining a BM25Retriever (keyword matching) with a dense vector retriever (semantic matching) to get hybrid retrieval.",
+    "category": "technical"
+  },
+  {
+    "id": "t06",
+    "question": "How do I split code files using LangChain text splitters?",
+    "ground_truth": "Use RecursiveCharacterTextSplitter.from_language() which pre-configures language-specific separators. Supported languages are defined in the Language enum: Language.PYTHON, Language.JS, Language.GO, Language.JAVA, Language.CPP, Language.RUBY, Language.RUST, Language.SCALA, Language.SWIFT, Language.MARKDOWN, etc. Example: splitter = RecursiveCharacterTextSplitter.from_language(language=Language.PYTHON, chunk_size=1000, chunk_overlap=200). This splits on class and function definitions first, preserving code structure better than generic character splitting.",
+    "category": "technical"
+  },
+  {
+    "id": "h01",
+    "question": "How do I build a basic RAG chain in LangChain?",
+    "ground_truth": "1) Load documents with a document loader (e.g. WebBaseLoader). 2) Split into chunks with RecursiveCharacterTextSplitter. 3) Embed and index with Chroma.from_documents(chunks, embeddings). 4) Create a retriever: vectorstore.as_retriever(). 5) Build a LCEL chain: chain = ({\"context\": retriever | format_docs, \"question\": RunnablePassthrough()} | prompt | llm | StrOutputParser()). The prompt should instruct the model to answer using only the provided context. Invoke with chain.invoke(\"your question\").",
+    "category": "how_to"
+  },
+  {
+    "id": "h02",
+    "question": "How do I add streaming output to my LangChain application?",
+    "ground_truth": "Use .stream() instead of .invoke() on any LCEL chain or LLM. For a chain: for chunk in chain.stream(input): print(chunk, end=\"\", flush=True). For LangGraph, use app.stream(input, stream_mode=\"values\") to get state snapshots after each node, or stream_mode=\"messages\" to stream LLM tokens directly. Custom streaming within a graph node uses get_stream_writer() to push arbitrary data to the stream. ChatOllama and other LangChain chat models support streaming natively.",
+    "category": "how_to"
+  },
+  {
+    "id": "h03",
+    "question": "How do I create a multi-agent system with LangGraph?",
+    "ground_truth": "In LangGraph, build each agent as a subgraph or node, then connect them in a supervisor graph. The supervisor agent receives the task and routes to specialized agents using conditional edges. Each agent can have its own tools and state. Use handoff tools (transfer_to_agent_name) to pass control between agents with context. The recommended pattern is a supervisor-worker architecture: a supervisor LLM decides which worker agent to call next based on the current task state, looping until completion.",
+    "category": "how_to"
+  },
+  {
+    "id": "h04",
+    "question": "How do I implement human-in-the-loop in a LangChain agent?",
+    "ground_truth": "Use LangGraph's interrupt() function inside a node to pause execution and wait for human input. When interrupt() is called, the graph suspends and returns control to the caller. Resume by calling app.invoke(Command(resume=human_response), config=config). For tool-level approval, use interrupt_before=[\"tool_node\"] in compile() to pause before executing tools, allowing a human to review and approve or reject the tool call. State is persisted via a checkpointer (e.g. MemorySaver) so the graph resumes from exactly where it paused.",
+    "category": "how_to"
+  },
+  {
+    "id": "h05",
+    "question": "How do I use tools with a LangChain chat model?",
+    "ground_truth": "Define tools using the @tool decorator or by subclassing BaseTool. Bind them to the model with llm_with_tools = llm.bind_tools([tool1, tool2]). The model will return AIMessage objects with tool_calls when it decides to use a tool. Execute the tool calls using ToolNode (in LangGraph) or manually by routing tool_calls to the appropriate tool functions. Return results as ToolMessage objects. In LangGraph, build a loop: agent node -> conditional edge (tool_calls present?) -> tool node -> back to agent.",
+    "category": "how_to"
+  },
+  {
+    "id": "h06",
+    "question": "How do I add memory to a conversation chain?",
+    "ground_truth": "For short-term (in-context) memory, maintain a list of messages and pass it in the prompt: prompt includes {chat_history} which is populated from previous (human, ai) message pairs. Use RunnableWithMessageHistory to automatically manage history with a get_session_history function. For persistent memory across sessions, use LangGraph with a checkpointer: compile(checkpointer=MemorySaver()) saves the full graph state after each step, and passing the same thread_id in config resumes from the saved state.",
+    "category": "how_to"
+  },
+  {
+    "id": "h07",
+    "question": "How do I deploy a LangChain application to production?",
+    "ground_truth": "LangChain applications can be deployed as standard Python web services. Options include: wrapping the chain in a FastAPI endpoint using chain.invoke() in a route handler; using LangGraph Platform (cloud-hosted or self-hosted) which provides built-in persistence, streaming, and a REST API for LangGraph applications; or containerizing with Docker. For observability, integrate LangSmith by setting LANGCHAIN_TRACING_V2=true and LANGCHAIN_API_KEY, which traces all LLM calls, retrieval steps, and chain invocations automatically.",
+    "category": "how_to"
+  },
+  {
+    "id": "e01",
+    "question": "What are the common errors when using LangChain?",
+    "ground_truth": "The most common LangChain errors are: INVALID_TOOL_RESULTS (tool output not returned as ToolMessage after a tool call); OUTPUT_PARSING_FAILURE (LLM output does not match the expected format of an output parser); MESSAGE_COERCION_FAILURE (wrong message type passed to a model, e.g. passing a string instead of a HumanMessage); MODEL_NOT_FOUND (model name does not exist in the provider); MODEL_RATE_LIMIT (too many requests to the API). Most are caused by incorrect message ordering, wrong types, or model-specific format requirements.",
+    "category": "error_related"
+  },
+  {
+    "id": "e02",
+    "question": "What causes INVALID_TOOL_RESULTS error in LangChain?",
+    "ground_truth": "INVALID_TOOL_RESULTS occurs when a model receives a conversation history where a tool was called (AIMessage with tool_calls) but the subsequent message is not a ToolMessage containing the tool result. The fix is to ensure that every tool_call in an AIMessage is followed by a ToolMessage with the matching tool_call_id before calling the model again. In LangGraph, using ToolNode handles this automatically. Manually, create ToolMessage(content=result, tool_call_id=tool_call[\"id\"]) and append it to the message list.",
+    "category": "error_related"
+  },
+  {
+    "id": "e03",
+    "question": "How do I fix a MODEL_NOT_FOUND error with Ollama?",
+    "ground_truth": "MODEL_NOT_FOUND with Ollama means the model name passed to ChatOllama or OllamaEmbeddings does not match any model pulled locally. Fix: run ollama list to see available models, then ollama pull <model_name> to download the missing model. Always include the tag (e.g. mistral:7b not just mistral). Verify the Ollama server is running with ollama serve or by checking http://localhost:11434. The model name in code must exactly match the name shown by ollama list.",
+    "category": "error_related"
+  },
+  {
+    "id": "e04",
+    "question": "What causes OUTPUT_PARSING_FAILURE and how to fix it?",
+    "ground_truth": "OUTPUT_PARSING_FAILURE occurs when the LLM's response does not conform to the format expected by an output parser (e.g. PydanticOutputParser, JsonOutputParser, CommaSeparatedListOutputParser). Causes: the model ignores formatting instructions, produces extra text around the JSON, or uses a different schema. Fixes: add format_instructions from the parser to the prompt; use with_structured_output() which uses function calling instead of text parsing for more reliable structured output; use a more capable model; or add a try/except with a fallback.",
+    "category": "error_related"
+  },
+  {
+    "id": "e05",
+    "question": "Why does MESSAGE_COERCION_FAILURE happen in LangChain?",
+    "ground_truth": "MESSAGE_COERCION_FAILURE occurs when LangChain cannot convert an input into a valid message object. Common causes: passing a plain string or dict where a BaseMessage (HumanMessage, AIMessage, etc.) is required; passing messages in the wrong order (e.g. two consecutive HumanMessages without an AIMessage between them, which some models reject); passing a tuple with an unrecognized role string. Fix: explicitly construct message objects (HumanMessage(content=\"...\"), AIMessage(content=\"...\")), or use the (\"human\", \"text\") shorthand in ChatPromptTemplate.",
+    "category": "error_related"
+  },
+  {
+    "id": "e06",
+    "question": "How do I handle rate limiting errors with LangChain models?",
+    "ground_truth": "Rate limiting (MODEL_RATE_LIMIT) occurs when requests exceed the provider's API quota. Solutions: add exponential backoff retry logic using tenacity (@retry decorator with wait_exponential and retry_if_exception_type); use LangChain's built-in with_retry() method on any Runnable; reduce request concurrency by batching or adding delays; switch to a model tier with higher rate limits; cache repeated identical requests with SQLiteCache or InMemoryCache set via langchain.llm_cache = cache_instance to avoid redundant API calls.",
+    "category": "error_related"
+  }
+]

@@ -16,7 +16,8 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 6: Routing (`06_routing.ipynb`, `src/chains/routing.py`)
 - [x] Phase 7: Re-ranking (`07_reranking.ipynb`, `src/retrieval/reranker.py`)
 - [x] Phase 8: Advanced RAG Patterns (`08_advanced_rag.ipynb`, `src/chains/advanced.py`)
-- [ ] Phase 9-12: See `RAG_PROJECT.md`
+- [x] Phase 9: Evaluation with RAGAS (`09_evaluation_ragas.ipynb`, `src/evaluation/evaluator.py`)
+- [ ] Phase 10-12: See `RAG_PROJECT.md`
 
 ## Tech Stack
 
