@@ -13,10 +13,11 @@ backed by retrieved documentation.
 
 Use the settings panel (gear icon) to change:
 
-- **RAG Mode** - Simple (dense), Hybrid (BM25 + dense), or Hybrid + Rerank
+- **RAG Mode** - Simple (dense), Hybrid (BM25 + dense), Hybrid + Rerank, or Direct LLM
 - **Number of results** - How many documents to retrieve (1-15)
 - **Show sources** - Display retrieved source documents alongside answers
 - **Conversation memory** - Enable follow-up questions that reference previous answers
+- **Comparison mode** - Show RAG and Direct LLM answers side by side for the same question
 
 ## Example questions
 
@@ -24,6 +25,13 @@ Use the settings panel (gear icon) to change:
 - "What parameters does RecursiveCharacterTextSplitter accept?"
 - "How do I use Ollama with LangChain?"
 - "What is the difference between stuff and map-reduce chains?"
+
+## Features
+
+- **Streaming** - Answers are streamed token by token
+- **Response time** - Retrieval and generation timing shown after each answer
+- **Comparison mode** - See both RAG and Direct LLM answers for the same question
+- **Conversation history** - Previous conversations are saved and can be resumed
 
 ## Details
 

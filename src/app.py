@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from copy import deepcopy
 from pathlib import Path
+from typing import Optional
 
 # Ensure project root is on sys.path (Chainlit loads this file directly)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -18,11 +20,13 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 import chainlit as cl
 from chainlit.input_widget import Select, Slider, Switch
+from chainlit.user import User
 from langchain_chroma import Chroma
 from langchain_core.messages import HumanMessage
 from langchain_ollama import ChatOllama
 
 from src.config import load_config
+from src.data_layer import JsonDataLayer
 from src.embeddings.models import create_from_registry
 from src.ingestion.chunkers import chunk_recursive
 from src.ingestion.cleaners import clean_corpus
@@ -90,6 +94,21 @@ print("[init] Ready.")
 
 
 # ---------------------------------------------------------------------------
+# Data persistence (JSON file-based, for conversation history)
+# ---------------------------------------------------------------------------
+
+@cl.data_layer
+def init_data_layer():
+    return JsonDataLayer(PROJECT_ROOT / "data" / "chat_history")
+
+
+@cl.header_auth_callback
+async def header_auth(headers: dict) -> Optional[User]:
+    """Transparent auth for local single-user setup (no login screen)."""
+    return User(identifier="local", metadata={"role": "user"})
+
+
+# ---------------------------------------------------------------------------
 # RAG mode presets
 # ---------------------------------------------------------------------------
 
@@ -113,6 +132,14 @@ _MODE_CONFIGS = {
 _MODE_NAMES = list(_MODE_CONFIGS.keys()) + [_DIRECT_LLM_MODE]
 _DEFAULT_MODE = "Hybrid + Rerank"
 
+_DEFAULT_SETTINGS = {
+    "rag_mode": _DEFAULT_MODE,
+    "num_results": 5,
+    "show_sources": True,
+    "conversation_memory": True,
+    "comparison_mode": False,
+}
+
 
 def _build_pipeline(mode: str, num_results: int) -> RAGPipeline:
     """Build a RAGPipeline with the given mode and result count."""
@@ -123,6 +150,43 @@ def _build_pipeline(mode: str, num_results: int) -> RAGPipeline:
     cfg["reranking"]["enabled"] = overrides["reranking"]["enabled"]
     cfg["reranking"]["top_k"] = int(num_results)
     return RAGPipeline(cfg, VECTORSTORE, CHUNKS, EMBEDDINGS, LLM)
+
+
+def _settings_widgets(settings: dict) -> list:
+    """Build the ChatSettings widget list from a settings dict."""
+    mode = settings.get("rag_mode", _DEFAULT_MODE)
+    return [
+        Select(
+            id="rag_mode",
+            label="RAG Mode",
+            values=_MODE_NAMES,
+            initial_index=_MODE_NAMES.index(mode)
+            if mode in _MODE_NAMES else _MODE_NAMES.index(_DEFAULT_MODE),
+        ),
+        Slider(
+            id="num_results",
+            label="Number of results",
+            initial=int(settings.get("num_results", 5)),
+            min=1,
+            max=15,
+            step=1,
+        ),
+        Switch(
+            id="show_sources",
+            label="Show source documents",
+            initial=settings.get("show_sources", True),
+        ),
+        Switch(
+            id="conversation_memory",
+            label="Conversation memory",
+            initial=settings.get("conversation_memory", True),
+        ),
+        Switch(
+            id="comparison_mode",
+            label="Comparison mode (RAG vs Direct LLM)",
+            initial=settings.get("comparison_mode", False),
+        ),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -180,41 +244,9 @@ async def on_chat_start():
     pipeline = _build_pipeline(_DEFAULT_MODE, num_results=5)
     cl.user_session.set("pipeline", pipeline)
     cl.user_session.set("history", [])
-    cl.user_session.set("settings", {
-        "rag_mode": _DEFAULT_MODE,
-        "num_results": 5,
-        "show_sources": True,
-        "conversation_memory": True,
-    })
+    cl.user_session.set("settings", dict(_DEFAULT_SETTINGS))
 
-    await cl.ChatSettings(
-        [
-            Select(
-                id="rag_mode",
-                label="RAG Mode",
-                values=_MODE_NAMES,
-                initial_index=_MODE_NAMES.index(_DEFAULT_MODE),
-            ),
-            Slider(
-                id="num_results",
-                label="Number of results",
-                initial=5,
-                min=1,
-                max=15,
-                step=1,
-            ),
-            Switch(
-                id="show_sources",
-                label="Show source documents",
-                initial=True,
-            ),
-            Switch(
-                id="conversation_memory",
-                label="Conversation memory",
-                initial=True,
-            ),
-        ]
-    ).send()
+    await cl.ChatSettings(_settings_widgets(_DEFAULT_SETTINGS)).send()
 
     summary = pipeline.component_summary()
     await cl.Message(
@@ -226,6 +258,36 @@ async def on_chat_start():
             f"- Corpus: {len(CHUNKS)} chunks"
         ),
     ).send()
+
+
+@cl.on_chat_resume
+async def on_chat_resume(thread: dict):
+    """Restore pipeline state when resuming a previous conversation."""
+    metadata = thread.get("metadata", {})
+    settings = metadata.get("chat_settings", dict(_DEFAULT_SETTINGS))
+    cl.user_session.set("settings", settings)
+
+    mode = settings.get("rag_mode", _DEFAULT_MODE)
+    num_results = int(settings.get("num_results", 5))
+
+    if mode != _DIRECT_LLM_MODE:
+        pipeline = _build_pipeline(mode, num_results)
+    else:
+        pipeline = _build_pipeline(_DEFAULT_MODE, num_results)
+    cl.user_session.set("pipeline", pipeline)
+
+    # Restore conversation history from thread steps
+    history = []
+    for step in thread.get("steps", []):
+        step_type = step.get("type")
+        content = step.get("output", "")
+        if step_type == "user_message":
+            history.append({"role": "user", "content": content})
+        elif step_type == "assistant_message":
+            history.append({"role": "assistant", "content": content})
+    cl.user_session.set("history", history)
+
+    await cl.ChatSettings(_settings_widgets(settings)).send()
 
 
 @cl.on_settings_update
@@ -261,6 +323,11 @@ async def on_settings_update(settings: dict):
             ),
         ).send()
 
+    comparison_changed = settings.get("comparison_mode") != old_settings.get("comparison_mode")
+    if comparison_changed:
+        state = "enabled" if settings.get("comparison_mode") else "disabled"
+        await cl.Message(content=f"Comparison mode **{state}**").send()
+
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -271,20 +338,21 @@ async def on_message(message: cl.Message):
 
     question = message.content
     mode = settings.get("rag_mode", _DEFAULT_MODE)
+    comparison = settings.get("comparison_mode", False)
 
     # Reformulate follow-up questions if conversation memory is enabled
     if settings.get("conversation_memory", True) and len(history) >= 2:
         question = await _reformulate(question, history)
 
-    # Create response message for streaming
-    msg = cl.Message(content="")
-
-    # --- Direct LLM mode (no retrieval) ---
-    if mode == _DIRECT_LLM_MODE:
+    # --- Direct LLM only mode (no comparison) ---
+    if mode == _DIRECT_LLM_MODE and not comparison:
+        msg = cl.Message(content="")
+        start = time.perf_counter()
         async for chunk in LLM.astream([HumanMessage(content=question)]):
             token = chunk.content if hasattr(chunk, "content") else str(chunk)
             await msg.stream_token(token)
-
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        await msg.stream_token(f"\n\n---\n_Generation: {elapsed_ms:,.0f}ms_")
         await msg.send()
 
         history.append({"role": "user", "content": message.content})
@@ -292,26 +360,32 @@ async def on_message(message: cl.Message):
         cl.user_session.set("history", history)
         return
 
-    # --- RAG mode ---
+    # --- RAG mode (possibly with comparison) ---
+    msg = cl.Message(content="")
+    if comparison:
+        await msg.stream_token("**RAG Answer:**\n\n")
+
     source_docs = []
+    retrieval_ms = 0.0
+    total_ms = 0.0
 
     async for event in pipeline.astream(question):
         if event["type"] == "retrieval":
-            docs = event["docs"]
-            source_docs = docs
+            source_docs = event["docs"]
+            retrieval_ms = event["retrieval_ms"]
 
             # Build detailed retrieval output with chunk previews
             lines = [
-                f"Retrieved **{len(docs)}** documents "
-                f"in {event['retrieval_ms']:.0f} ms\n"
+                f"Retrieved **{len(source_docs)}** documents "
+                f"in {retrieval_ms:.0f} ms\n"
             ]
-            for i, doc in enumerate(docs):
+            for i, doc in enumerate(source_docs):
                 title = doc.metadata.get("title", f"Source {i + 1}")
                 source = doc.metadata.get("source", "")
                 preview = doc.page_content[:200].replace("\n", " ")
                 if len(doc.page_content) > 200:
                     preview += "..."
-                lines.append(f"**[{i + 1}] {title}**")
+                lines.append(f"**Source {i + 1} - {title}**")
                 if source:
                     lines.append(f"  *{source}*")
                 lines.append(f"  {preview}\n")
@@ -327,10 +401,14 @@ async def on_message(message: cl.Message):
             await msg.stream_token(event["token"])
 
         elif event["type"] == "done":
-            pass
+            total_ms = event["elapsed_ms"]
+
+    generation_ms = total_ms - retrieval_ms
 
     # Append source references to the answer
-    # Element names must appear verbatim in the message for Chainlit to link them
+    # Element names must appear verbatim in the message for Chainlit to link them.
+    # Names must NOT contain [ or ] as Chainlit wraps them in markdown links
+    # [name](url) and nested brackets break the parser.
     if settings.get("show_sources", True) and source_docs:
         elements = []
         source_lines = ["\n\n---\n"]
@@ -343,10 +421,10 @@ async def on_message(message: cl.Message):
             source = doc.metadata.get("source", "")
             short_source = source.split("/")[-1] if "/" in source else source
             char_count = len(doc.page_content)
-            el_name = f"[{i + 1}] {title}"
+            el_name = f"Source {i + 1} - {title}"
 
             source_lines.append(
-                f"{i + 1}. {el_name} - "
+                f"{i + 1}. {el_name} "
                 f"*{short_source}* ({char_count} chars)"
             )
 
@@ -369,9 +447,27 @@ async def on_message(message: cl.Message):
         await msg.stream_token("\n".join(source_lines))
         msg.elements = elements
 
+    # Timing footer
+    await msg.stream_token(
+        f"\n\n_Retrieval: {retrieval_ms:,.0f}ms "
+        f"| Generation: {generation_ms:,.0f}ms "
+        f"| Total: {total_ms:,.0f}ms_"
+    )
     await msg.send()
 
-    # Update conversation history
+    # Update conversation history (only RAG answer, not comparison)
     history.append({"role": "user", "content": message.content})
     history.append({"role": "assistant", "content": msg.content})
     cl.user_session.set("history", history)
+
+    # --- Comparison: also stream Direct LLM answer ---
+    if comparison and mode != _DIRECT_LLM_MODE:
+        cmp_msg = cl.Message(content="")
+        await cmp_msg.stream_token("**Direct LLM (no RAG):**\n\n")
+        start = time.perf_counter()
+        async for chunk in LLM.astream([HumanMessage(content=question)]):
+            token = chunk.content if hasattr(chunk, "content") else str(chunk)
+            await cmp_msg.stream_token(token)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        await cmp_msg.stream_token(f"\n\n---\n_Generation: {elapsed_ms:,.0f}ms_")
+        await cmp_msg.send()
