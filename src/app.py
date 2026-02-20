@@ -333,20 +333,36 @@ async def on_message(message: cl.Message):
     # Element names must appear verbatim in the message for Chainlit to link them
     if settings.get("show_sources", True) and source_docs:
         elements = []
-        source_lines = ["\n\n---\n**Sources** (click to expand):\n"]
+        source_lines = ["\n\n---\n"]
+        source_lines.append(
+            f"**{len(source_docs)} sources** - click a source to view "
+            "the full retrieved chunk:\n"
+        )
         for i, doc in enumerate(source_docs):
             title = doc.metadata.get("title", f"Source {i + 1}")
             source = doc.metadata.get("source", "")
             short_source = source.split("/")[-1] if "/" in source else source
+            char_count = len(doc.page_content)
             el_name = f"[{i + 1}] {title}"
 
-            source_lines.append(f"- {el_name} *({short_source})*")
+            source_lines.append(
+                f"{i + 1}. {el_name} - "
+                f"*{short_source}* ({char_count} chars)"
+            )
 
-            header = f"Source: {source}\n{'=' * 40}\n\n" if source else ""
+            # Build rich side panel content
+            panel_lines = []
+            panel_lines.append(f"# {title}\n")
+            if source:
+                panel_lines.append(f"**URL:** {source}\n")
+            panel_lines.append(f"**Chunk length:** {char_count} characters\n")
+            panel_lines.append("---\n")
+            panel_lines.append(doc.page_content)
+
             elements.append(
                 cl.Text(
                     name=el_name,
-                    content=header + doc.page_content,
+                    content="\n".join(panel_lines),
                     display="side",
                 )
             )
