@@ -5,13 +5,14 @@
 llm:
   provider: ollama
   model: mistral:7b
-  temperature: 0.1
+  temperature: 0.0
   top_p: 0.9
   num_ctx: 4096
 
 embeddings:
   provider: ollama
-  model: nomic-embed-text
+  model: mxbai-embed-large
+  registry_key: mxbai_large
 
 chunking:
   strategy: recursive
@@ -31,7 +32,7 @@ vectorstore:
 retrieval:
   strategy: hybrid
   dense:
-    search_type: mmr
+    search_type: similarity
     k: 10
     fetch_k: 20
     lambda_mult: 0.7
@@ -67,10 +68,9 @@ routing:
 
 generation:
   prompt_template: |
-    You are a helpful assistant that answers questions about the LangChain Python framework.
-    Use the following retrieved context to answer the question.
-    If you cannot find the answer in the context, say so clearly.
-    Always cite which part of the context supports your answer.
+    Answer the following question using ONLY the provided context.
+    If the context does not contain enough information, say so.
+    Be concise and accurate.
 
     Context:
     {context}

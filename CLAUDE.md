@@ -17,7 +17,8 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 7: Re-ranking (`07_reranking.ipynb`, `src/retrieval/reranker.py`)
 - [x] Phase 8: Advanced RAG Patterns (`08_advanced_rag.ipynb`, `src/chains/advanced.py`)
 - [x] Phase 9: Evaluation with RAGAS (`09_evaluation_ragas.ipynb`, `src/evaluation/evaluator.py`)
-- [ ] Phase 10-12: See `RAG_PROJECT.md`
+- [x] Phase 10: Full Pipeline Assembly (`10_full_pipeline.ipynb`, `src/pipeline.py`)
+- [ ] Phase 11-12: See `RAG_PROJECT.md`
 
 ## Tech Stack
 
