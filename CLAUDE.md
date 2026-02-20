@@ -14,7 +14,8 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 4: Retrieval methods comparison (`04_retrieval_methods.ipynb`, `src/retrieval/`)
 - [x] Phase 5: Query translation (`05_query_translation.ipynb`, `src/chains/query_translation.py`)
 - [x] Phase 6: Routing (`06_routing.ipynb`, `src/chains/routing.py`)
-- [ ] Phase 7-12: See `RAG_PROJECT.md`
+- [x] Phase 7: Re-ranking (`07_reranking.ipynb`, `src/retrieval/reranker.py`)
+- [ ] Phase 8-12: See `RAG_PROJECT.md`
 
 ## Tech Stack
 
