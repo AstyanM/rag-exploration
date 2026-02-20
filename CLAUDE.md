@@ -18,7 +18,8 @@ The full spec is in `RAG_PROJECT.md`.
 - [x] Phase 8: Advanced RAG Patterns (`08_advanced_rag.ipynb`, `src/chains/advanced.py`)
 - [x] Phase 9: Evaluation with RAGAS (`09_evaluation_ragas.ipynb`, `src/evaluation/evaluator.py`)
 - [x] Phase 10: Full Pipeline Assembly (`10_full_pipeline.ipynb`, `src/pipeline.py`)
-- [ ] Phase 11-12: See `RAG_PROJECT.md`
+- [x] Phase 11: Chainlit Chat Interface (`src/app.py`, `.chainlit/config.toml`, `chainlit.md`)
+- [ ] Phase 12: See `RAG_PROJECT.md`
 
 ## Tech Stack
 
@@ -27,7 +28,7 @@ The full spec is in `RAG_PROJECT.md`.
 - Embeddings: nomic-embed-text via Ollama (already pulled)
 - Vector store: ChromaDB (persisted in `vectorstore/chroma_db/`)
 - Framework: LangChain, LangGraph
-- Frontend (later): Chainlit
+- Frontend: Chainlit (`make app` or `chainlit run src/app.py --port 8000`)
 - All 100% local, no external API calls
 
 ## Key Paths
@@ -53,5 +54,6 @@ The full spec is in `RAG_PROJECT.md`.
 ## Commands
 
 - `ollama serve` - Start Ollama (usually already running)
+- `make app` - Launch Chainlit chat interface (port 8000)
 - `python scripts/scrape_docs.py` - Re-scrape docs from GitHub
 - Notebooks run from the `notebooks/` directory (PROJECT_ROOT = parent)

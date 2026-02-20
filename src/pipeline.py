@@ -13,7 +13,9 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -153,6 +155,9 @@ class RAGPipeline:
             chunks=chunks,
         )
 
+        # Max documents to use (EnsembleRetriever may return more than this)
+        self._final_k = retrieval_cfg.get("final_k", 5)
+
         # Optionally wrap with reranking
         reranking_cfg = config.get("reranking", {})
         if reranking_cfg.get("enabled", False):
@@ -211,9 +216,9 @@ class RAGPipeline:
         """
         start = time.perf_counter()
 
-        # Retrieve
+        # Retrieve (cap at final_k - EnsembleRetriever may return more)
         t_ret = time.perf_counter()
-        docs = self._retriever.invoke(question)
+        docs = self._retriever.invoke(question)[:self._final_k]
         retrieval_ms = (time.perf_counter() - t_ret) * 1000
 
         contexts = [d.page_content for d in docs]
@@ -240,6 +245,49 @@ class RAGPipeline:
             retrieval_ms=retrieval_ms,
             generation_ms=generation_ms,
         )
+
+    async def astream(self, question: str) -> AsyncGenerator[dict, None]:
+        """Stream the RAG pipeline: retrieve, then stream generation tokens.
+
+        Yields dicts with keys:
+            type="retrieval" -> docs, retrieval_ms
+            type="token"     -> token (str chunk)
+            type="done"      -> answer, elapsed_ms, source_docs, contexts
+        """
+        start = time.perf_counter()
+
+        # Retrieval (synchronous, run in thread to avoid blocking event loop)
+        # Cap at final_k - EnsembleRetriever may return more
+        t_ret = time.perf_counter()
+        all_docs = await asyncio.to_thread(self._retriever.invoke, question)
+        docs = all_docs[:self._final_k]
+        retrieval_ms = (time.perf_counter() - t_ret) * 1000
+
+        yield {
+            "type": "retrieval",
+            "docs": docs,
+            "retrieval_ms": retrieval_ms,
+        }
+
+        # Stream generation tokens
+        contexts = [d.page_content for d in docs]
+        full_answer: list[str] = []
+        async for chunk in self._gen_chain.astream({
+            "context": _format_docs(docs),
+            "question": question,
+        }):
+            token = chunk if isinstance(chunk, str) else str(chunk)
+            full_answer.append(token)
+            yield {"type": "token", "token": token}
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        yield {
+            "type": "done",
+            "answer": "".join(full_answer),
+            "elapsed_ms": elapsed_ms,
+            "source_docs": docs,
+            "contexts": contexts,
+        }
 
     def component_summary(self) -> dict:
         """Return a summary of the pipeline components for display."""
