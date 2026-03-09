@@ -20,94 +20,149 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 import re
+import tree_sitter_c as tsc
+from tree_sitter import Language, Parser
+from qdrant_client import QdrantClient
 
-def extraire_defines_simples(texte_code):
-    defines_trouves = {}
-    blocs_a_supprimer = []
-    
-    # --- 1. FONCTION UTILE : Trouver le numéro de ligne ---
-    def numero_de_ligne(index):
-        # Compte le nombre de "\n" avant cet index pour déduire la ligne
-        return texte_code.count('\n', 0, index) + 1
+# ==========================================
+# 1. INITIALIZATION
+# ==========================================
 
-    # --- 2. TROUVER TOUS LES COMMENTAIRES ---
-    # (?s) permet au point (.) d'inclure les sauts de ligne pour les /* ... */
-    commentaires = []
-    for match in re.finditer(r'(?s)/\*.*?\*/|//[^\n]*', texte_code):
-        commentaires.append({
-            "texte": match.group(0),
-            "ligne_fin": numero_de_ligne(match.end() - 1)
-        })
+# Initialize Tree-sitter for C Language
+C_LANGUAGE = Language(tsc.language())
+parser = Parser(C_LANGUAGE)
 
-    # --- 3. TROUVER TOUS LES DEFINES (Même avec des \) ---
-    # Groupe 1 : Le nom (ex: MAX ou MIN(a,b))
-    # Groupe 2 : Le contenu (Gère les lignes qui se terminent par \ et la dernière ligne)
-    regex_define = r'(?m)^[ \t]*#[ \t]*define[ \t]+([a-zA-Z_]\w*(?:\([^)]*\))?)[ \t]*((?:[^\n]*\\\r?\n)*[^\n]*)'
-    
-    for match in re.finditer(regex_define, texte_code):
-        nom_macro = match.group(1)
-        contenu_macro = match.group(2).strip()
-        ligne_debut_define = numero_de_ligne(match.start())
-        
-        brief_associe = ""
-        
-        # --- 4. LA LOGIQUE PYTHON (Simple et stricte) ---
-        for com in commentaires:
-            # Condition 1 : Est-il STRICTEMENT sur la ligne juste au-dessus ?
-            if com["ligne_fin"] == ligne_debut_define - 1:
-                # Condition 2 : Contient-il le mot "brief" ?
-                if "brief" in com["texte"].lower():
-                    # On nettoie les étoiles pour que ce soit joli
-                    brief_associe = re.sub(r'^[ \t]*/?\*+/?[ \t]*|//[ \t]*', '', com["texte"], flags=re.MULTILINE).strip()
-                    # On le note pour le supprimer du code plus tard
-                    blocs_a_supprimer.append(com["texte"])
-                break # On a trouvé le commentaire au-dessus, on arrête de chercher
+# Initialize Qdrant Client (running in-memory for this test)
+# For production, use: client = QdrantClient(path="./qdrant_db")
+client = QdrantClient(":memory:")
 
-        # On sauvegarde dans le dictionnaire
-        defines_trouves[nom_macro] = {
-            "valeur": contenu_macro,
-            "brief": brief_associe
-        }
-        
-        # On note le define pour le supprimer du code
-        blocs_a_supprimer.append(match.group(0))
+# Setup Qdrant to use FastEmbed for local vector generation
+client.set_model("sentence-transformers/all-MiniLM-L6-v2")
 
-    # --- 5. NETTOYAGE DU CODE ---
-    texte_nettoye = texte_code
-    for bloc in blocs_a_supprimer:
-        # On efface les blocs trouvés (define et briefs)
-        texte_nettoye = texte_nettoye.replace(bloc, "")
+# ==========================================
+# 2. MOCK DATA (Your Cleaned C Code)
+# ==========================================
 
-    return texte_nettoye, defines_trouves
+numbered_c_code = """  1 | #include <stdio.h>
+  2 | 
+  3 | typedef enum {
+  4 |     STATUS_OK,
+  5 |     STATUS_ERROR
+  6 | } SystemStatus;
+  7 | 
+  8 | struct DeviceConfig {
+  9 |     int device_id;
+ 10 |     int baud_rate;
+ 11 | };
+ 12 | 
+ 13 | int initialize_device(struct DeviceConfig config) {
+ 14 |     if (config.device_id <= 0) {
+ 15 |         return STATUS_ERROR;
+ 16 |     }
+ 17 |     // Device init logic here
+ 18 |     return STATUS_OK;
+ 19 | }"""
 
-# --- TEST ---
-
-code_c = """
-/*
- * Copyright (c) 2026. Ligne 2 à 4.
- */
-
-/**
- * @brief Taille max
- * multiligne
- */
-#define MAX_BUFFER 1024
-
-// Un commentaire inutile ligne 13
-
-// @brief Macro multiligne complexe avec des backslash
-#define COMPLEXE(a, b) \
-    if (a > b) { \
-        printf("A gagne"); \
+# Your previously extracted metadata
+file_metadata = {
+    "file_name": "device_driver.c",
+    "file_path": "/src/drivers/device_driver.c",
+    "global_defines": {
+        "MAX_BUFFER": {"val": "1024", "brief": "Max buffer size"},
     }
+}
 
-#define SANS_COMMENTAIRE 42
-"""
+# ==========================================
+# 3. CHUNKING LOGIC (Tree-sitter)
+# ==========================================
 
-code_propre, dict_def = extraire_defines_simples(code_c)
+def chunk_c_code_with_treesitter(numbered_text, metadata):
+    """
+    Strips line numbers for Tree-sitter, parses the AST, and maps 
+    the boundaries back to the original numbered text.
+    """
+    lines = numbered_text.split('\n')
+    
+    # Strip line numbers temporarily to get valid C code for the parser
+    # Matches patterns like "  14 | " or "1 | "
+    clean_lines = [re.sub(r'^[ \t]*\d+[ \t]*\|[ \t]*', '', line) for line in lines]
+    clean_code = '\n'.join(clean_lines)
+    
+    # Parse the clean code
+    tree = parser.parse(bytes(clean_code, "utf8"))
+    
+    # Tree-sitter query to find functions, structs, and enums
+    query_code = """
+    (function_definition) @function
+    (struct_specifier) @struct
+    (enum_specifier) @enum
+    """
+    query = C_LANGUAGE.query(query_code)
+    captures = query.captures(tree.root_node)
+    
+    chunks = []
+    
+    # Extract blocks using AST boundaries, but slice from the NUMBERED lines
+    for node, tag in captures:
+        start_line = node.start_point[0]
+        end_line = node.end_point[0]
+        
+        chunk_lines = lines[start_line:end_line + 1]
+        chunk_text = '\n'.join(chunk_lines)
+        
+        # Merge file metadata with chunk-specific metadata
+        chunk_metadata = metadata.copy()
+        chunk_metadata.update({
+            "chunk_type": tag,
+            "start_line": start_line + 1, # +1 because AST is 0-indexed
+            "end_line": end_line + 1
+        })
+        
+        chunks.append({
+            "text": chunk_text,
+            "metadata": chunk_metadata
+        })
+        
+    return chunks
 
-for nom, infos in dict_def.items():
-    print(f"[{nom}]")
-    print(f"  Valeur: {infos['valeur']}")
-    print(f"  Brief : {infos['brief']}\n")
-"""
+# Execute the chunker
+document_chunks = chunk_c_code_with_treesitter(numbered_c_code, file_metadata)
+print(f"Extracted {len(document_chunks)} logical chunks from the code.\n")
+
+# ==========================================
+# 4. INDEXING TO QDRANT
+# ==========================================
+
+COLLECTION_NAME = "c_code_knowledge_base"
+
+# Recreate the collection (useful for iterative testing)
+if client.collection_exists(COLLECTION_NAME):
+    client.delete_collection(COLLECTION_NAME)
+
+# Create collection (FastEmbed automatically configures the vector size)
+client.create_collection(
+    collection_name=COLLECTION_NAME,
+    vectors_config=client.get_fastembed_vector_params()
+)
+
+# Prepare data for insertion
+documents = [chunk["text"] for chunk in document_chunks]
+metadata_list = [chunk["metadata"] for chunk in document_chunks]
+
+# Insert chunks into Qdrant (vectors are generated automatically)
+client.add(
+    collection_name=COLLECTION_NAME,
+    documents=documents,
+    metadata=metadata_list
+)
+print(f"Successfully indexed {len(documents)} chunks into Qdrant collection: '{COLLECTION_NAME}'\n")
+
+# ==========================================
+# 5. RETRIEVAL TESTING (RAG)
+# ==========================================
+
+test_query = "How is the device configured and what are its properties?"
+print(f"--- RUNNING TEST QUERY ---")
+print(f"Query: '{test_query}'\n")
+
+# Perform
