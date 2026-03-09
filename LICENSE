@@ -20,149 +20,87 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 import re
-import tree_sitter_c as tsc
-from tree_sitter import Language, Parser
-from qdrant_client import QdrantClient
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 
-# ==========================================
-# 1. INITIALIZATION
-# ==========================================
-
-# Initialize Tree-sitter for C Language
-C_LANGUAGE = Language(tsc.language())
-parser = Parser(C_LANGUAGE)
-
-# Initialize Qdrant Client (running in-memory for this test)
-# For production, use: client = QdrantClient(path="./qdrant_db")
-client = QdrantClient(":memory:")
-
-# Setup Qdrant to use FastEmbed for local vector generation
-client.set_model("sentence-transformers/all-MiniLM-L6-v2")
-
-# ==========================================
-# 2. MOCK DATA (Your Cleaned C Code)
-# ==========================================
-
-numbered_c_code = """  1 | #include <stdio.h>
-  2 | 
-  3 | typedef enum {
-  4 |     STATUS_OK,
-  5 |     STATUS_ERROR
-  6 | } SystemStatus;
-  7 | 
-  8 | struct DeviceConfig {
-  9 |     int device_id;
- 10 |     int baud_rate;
- 11 | };
- 12 | 
- 13 | int initialize_device(struct DeviceConfig config) {
- 14 |     if (config.device_id <= 0) {
- 15 |         return STATUS_ERROR;
- 16 |     }
- 17 |     // Device init logic here
- 18 |     return STATUS_OK;
- 19 | }"""
-
-# Your previously extracted metadata
-file_metadata = {
-    "file_name": "device_driver.c",
-    "file_path": "/src/drivers/device_driver.c",
-    "global_defines": {
-        "MAX_BUFFER": {"val": "1024", "brief": "Max buffer size"},
-    }
-}
-
-# ==========================================
-# 3. CHUNKING LOGIC (Tree-sitter)
-# ==========================================
-
-def chunk_c_code_with_treesitter(numbered_text, metadata):
-    """
-    Strips line numbers for Tree-sitter, parses the AST, and maps 
-    the boundaries back to the original numbered text.
-    """
-    lines = numbered_text.split('\n')
+def chunk_avec_numeros_de_lignes(texte_numerote, metadonnees_base, chunk_size=500, chunk_overlap=50):
+    lignes_propres = []
+    correspondance_lignes = [] # Va stocker: index_ligne_propre -> vrai_numero_de_ligne
     
-    # Strip line numbers temporarily to get valid C code for the parser
-    # Matches patterns like "  14 | " or "1 | "
-    clean_lines = [re.sub(r'^[ \t]*\d+[ \t]*\|[ \t]*', '', line) for line in lines]
-    clean_code = '\n'.join(clean_lines)
-    
-    # Parse the clean code
-    tree = parser.parse(bytes(clean_code, "utf8"))
-    
-    # Tree-sitter query to find functions, structs, and enums
-    query_code = """
-    (function_definition) @function
-    (struct_specifier) @struct
-    (enum_specifier) @enum
-    """
-    query = C_LANGUAGE.query(query_code)
-    captures = query.captures(tree.root_node)
-    
-    chunks = []
-    
-    # Extract blocks using AST boundaries, but slice from the NUMBERED lines
-    for node, tag in captures:
-        start_line = node.start_point[0]
-        end_line = node.end_point[0]
+    # 1. Extraction et séparation
+    for ligne in texte_numerote.split('\n'):
+        # Cherche le format "  12 | int main() {"
+        match = re.match(r'^[ \t]*(\d+)[ \t]*\|[ \t]*(.*)', ligne)
         
-        chunk_lines = lines[start_line:end_line + 1]
-        chunk_text = '\n'.join(chunk_lines)
+        if match:
+            vrai_numero = int(match.group(1))
+            code_propre = match.group(2)
+        else:
+            # Sécurité au cas où une ligne n'aurait pas de numéro
+            vrai_numero = correspondance_lignes[-1] + 1 if correspondance_lignes else 1
+            code_propre = ligne
+            
+        lignes_propres.append(code_propre)
+        correspondance_lignes.append(vrai_numero)
         
-        # Merge file metadata with chunk-specific metadata
-        chunk_metadata = metadata.copy()
-        chunk_metadata.update({
-            "chunk_type": tag,
-            "start_line": start_line + 1, # +1 because AST is 0-indexed
-            "end_line": end_line + 1
+    # On recrée le code 100% propre pour LangChain
+    texte_propre_complet = '\n'.join(lignes_propres)
+    
+    # 2. Configuration du Splitter (add_start_index est CRUCIAL ici)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        add_start_index=True # Demande à LangChain de noter l'index du caractère de départ
+    )
+    
+    # On crée les chunks bruts
+    chunks_bruts = splitter.create_documents([texte_propre_complet])
+    documents_finaux = []
+    
+    # 3. Réconciliation des métadonnées avec les numéros de ligne
+    for chunk in chunks_bruts:
+        # Index en nombre de caractères
+        char_debut = chunk.metadata['start_index']
+        char_fin = char_debut + len(chunk.page_content)
+        
+        # Astuce : le numéro de la ligne correspond au nombre de sauts de ligne (\n) 
+        # qu'il y a eu avant ce caractère dans le grand texte.
+        idx_ligne_debut = texte_propre_complet.count('\n', 0, char_debut)
+        
+        # Le -1 évite de compter la ligne suivante si le chunk s'arrête pile sur un \n
+        idx_ligne_fin = texte_propre_complet.count('\n', 0, max(0, char_fin - 1))
+        
+        # Création des métadonnées finales
+        meta = metadonnees_base.copy()
+        meta.update({
+            "start_line": correspondance_lignes[idx_ligne_debut],
+            "end_line": correspondance_lignes[idx_ligne_fin]
         })
         
-        chunks.append({
-            "text": chunk_text,
-            "metadata": chunk_metadata
-        })
+        # Création du document LangChain propre et enrichi
+        doc = Document(
+            page_content=chunk.page_content,
+            metadata=meta
+        )
+        documents_finaux.append(doc)
         
-    return chunks
+    return documents_finaux
 
-# Execute the chunker
-document_chunks = chunk_c_code_with_treesitter(numbered_c_code, file_metadata)
-print(f"Extracted {len(document_chunks)} logical chunks from the code.\n")
+# --- TEST ---
 
-# ==========================================
-# 4. INDEXING TO QDRANT
-# ==========================================
+texte_test = """  15 | #include <stdio.h>
+  16 | 
+  17 | int main() {
+  18 |     printf("Bonjour");
+  19 |     return 0;
+  20 | }"""
 
-COLLECTION_NAME = "c_code_knowledge_base"
+metadonnees_fichier = {"nom_fichier": "main.c"}
 
-# Recreate the collection (useful for iterative testing)
-if client.collection_exists(COLLECTION_NAME):
-    client.delete_collection(COLLECTION_NAME)
+# On met un chunk_size très petit (30) pour forcer la découpe lors du test
+mes_chunks = chunk_avec_numeros_de_lignes(texte_test, metadonnees_fichier, chunk_size=30, chunk_overlap=5)
 
-# Create collection (FastEmbed automatically configures the vector size)
-client.create_collection(
-    collection_name=COLLECTION_NAME,
-    vectors_config=client.get_fastembed_vector_params()
-)
-
-# Prepare data for insertion
-documents = [chunk["text"] for chunk in document_chunks]
-metadata_list = [chunk["metadata"] for chunk in document_chunks]
-
-# Insert chunks into Qdrant (vectors are generated automatically)
-client.add(
-    collection_name=COLLECTION_NAME,
-    documents=documents,
-    metadata=metadata_list
-)
-print(f"Successfully indexed {len(documents)} chunks into Qdrant collection: '{COLLECTION_NAME}'\n")
-
-# ==========================================
-# 5. RETRIEVAL TESTING (RAG)
-# ==========================================
-
-test_query = "How is the device configured and what are its properties?"
-print(f"--- RUNNING TEST QUERY ---")
-print(f"Query: '{test_query}'\n")
-
-# Perform
+for i, doc in enumerate(mes_chunks):
+    print(f"--- Chunk {i+1} [Lignes {doc.metadata['start_line']} à {doc.metadata['end_line']}] ---")
+    print(doc.page_content)
+    print("-" * 35)
