@@ -19,3 +19,95 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+import re
+
+def extraire_defines_simples(texte_code):
+    defines_trouves = {}
+    blocs_a_supprimer = []
+    
+    # --- 1. FONCTION UTILE : Trouver le numéro de ligne ---
+    def numero_de_ligne(index):
+        # Compte le nombre de "\n" avant cet index pour déduire la ligne
+        return texte_code.count('\n', 0, index) + 1
+
+    # --- 2. TROUVER TOUS LES COMMENTAIRES ---
+    # (?s) permet au point (.) d'inclure les sauts de ligne pour les /* ... */
+    commentaires = []
+    for match in re.finditer(r'(?s)/\*.*?\*/|//[^\n]*', texte_code):
+        commentaires.append({
+            "texte": match.group(0),
+            "ligne_fin": numero_de_ligne(match.end() - 1)
+        })
+
+    # --- 3. TROUVER TOUS LES DEFINES (Même avec des \) ---
+    # Groupe 1 : Le nom (ex: MAX ou MIN(a,b))
+    # Groupe 2 : Le contenu (Gère les lignes qui se terminent par \ et la dernière ligne)
+    regex_define = r'(?m)^[ \t]*#[ \t]*define[ \t]+([a-zA-Z_]\w*(?:\([^)]*\))?)[ \t]*((?:[^\n]*\\\r?\n)*[^\n]*)'
+    
+    for match in re.finditer(regex_define, texte_code):
+        nom_macro = match.group(1)
+        contenu_macro = match.group(2).strip()
+        ligne_debut_define = numero_de_ligne(match.start())
+        
+        brief_associe = ""
+        
+        # --- 4. LA LOGIQUE PYTHON (Simple et stricte) ---
+        for com in commentaires:
+            # Condition 1 : Est-il STRICTEMENT sur la ligne juste au-dessus ?
+            if com["ligne_fin"] == ligne_debut_define - 1:
+                # Condition 2 : Contient-il le mot "brief" ?
+                if "brief" in com["texte"].lower():
+                    # On nettoie les étoiles pour que ce soit joli
+                    brief_associe = re.sub(r'^[ \t]*/?\*+/?[ \t]*|//[ \t]*', '', com["texte"], flags=re.MULTILINE).strip()
+                    # On le note pour le supprimer du code plus tard
+                    blocs_a_supprimer.append(com["texte"])
+                break # On a trouvé le commentaire au-dessus, on arrête de chercher
+
+        # On sauvegarde dans le dictionnaire
+        defines_trouves[nom_macro] = {
+            "valeur": contenu_macro,
+            "brief": brief_associe
+        }
+        
+        # On note le define pour le supprimer du code
+        blocs_a_supprimer.append(match.group(0))
+
+    # --- 5. NETTOYAGE DU CODE ---
+    texte_nettoye = texte_code
+    for bloc in blocs_a_supprimer:
+        # On efface les blocs trouvés (define et briefs)
+        texte_nettoye = texte_nettoye.replace(bloc, "")
+
+    return texte_nettoye, defines_trouves
+
+# --- TEST ---
+
+code_c = """
+/*
+ * Copyright (c) 2026. Ligne 2 à 4.
+ */
+
+/**
+ * @brief Taille max
+ * multiligne
+ */
+#define MAX_BUFFER 1024
+
+// Un commentaire inutile ligne 13
+
+// @brief Macro multiligne complexe avec des backslash
+#define COMPLEXE(a, b) \
+    if (a > b) { \
+        printf("A gagne"); \
+    }
+
+#define SANS_COMMENTAIRE 42
+"""
+
+code_propre, dict_def = extraire_defines_simples(code_c)
+
+for nom, infos in dict_def.items():
+    print(f"[{nom}]")
+    print(f"  Valeur: {infos['valeur']}")
+    print(f"  Brief : {infos['brief']}\n")
+"""
