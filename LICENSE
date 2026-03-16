@@ -19,180 +19,88 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-import re
-import uuid
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain.retrievers import ParentDocumentRetriever
-from langchain.storage import InMemoryStore
-from langchain_qdrant import QdrantVectorStore
-from langchain_openai import OpenAIEmbeddings
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance
+import requests
+import time
 
-# ==========================================
-# 1. CUSTOM PARENT CHUNKER (Line Numbers)
-# ==========================================
-def create_parent_chunks_with_line_numbers(numbered_text, base_metadata, chunk_size=800, chunk_overlap=0):
-    """
-    Cleans the line numbers from the text, splits it into large blocks (Parents),
-    and strictly maps the start/end lines back to the metadata.
-    """
-    clean_lines = []
-    line_mapping = [] # Maps clean text index -> actual original line number
+API_KEY = "VOTRE_CLE_API"
+BASE_URL = "https://votre-url.com/v1/embeddings" # Assurez-vous que c'est l'URL complète qui finit par /embeddings
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# La méga-liste des modèles d'embeddings probables
+modeles_a_tester = [
+    # --- Famille BAAI (BGE) - Très probable vu la dimension 768 ---
+    "BAAI/bge-base-en-v1.5", "bge-base-en-v1.5", "bge-base",
+    "BAAI/bge-large-en-v1.5", "bge-large-en-v1.5", "bge-large",
+    "BAAI/bge-small-en-v1.5", "bge-small-en-v1.5", "bge-small",
+    "BAAI/bge-m3", "bge-m3",
     
-    # Extract line numbers and clean code
-    for line in numbered_text.split('\n'):
-        match = re.match(r'^[ \t]*(\d+)[ \t]*\|[ \t]*(.*)', line)
-        if match:
-            real_number = int(match.group(1))
-            clean_code = match.group(2)
-        else:
-            real_number = line_mapping[-1] + 1 if line_mapping else 1
-            clean_code = line
+    # --- Famille Sentence-Transformers (Classiques) ---
+    "sentence-transformers/all-mpnet-base-v2", "all-mpnet-base-v2",
+    "sentence-transformers/all-MiniLM-L6-v2", "all-MiniLM-L6-v2",
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "paraphrase-multilingual-MiniLM-L12-v2",
+    
+    # --- Famille Jina AI (Spécialistes du code et multilingue) ---
+    "jina-embeddings-v2-base-en", "jina-embeddings-v2-base-code",
+    "jina-embeddings-v2-base-fr", "jina-embeddings-v3",
+    "jinaai/jina-embeddings-v2-base-en", "jinaai/jina-embeddings-v2-base-code",
+    
+    # --- Famille Nomic ---
+    "nomic-embed-text", "nomic-ai/nomic-embed-text-v1.5",
+    
+    # --- Famille Microsoft / E5 ---
+    "intfloat/multilingual-e5-base", "multilingual-e5-base",
+    "intfloat/multilingual-e5-large", "multilingual-e5-large",
+    "intfloat/e5-base-v2", "e5-base-v2",
+    
+    # --- Modèles d'API standard (si c'est un proxy LiteLLM) ---
+    "text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large",
+    "mistral-embed", "cohere/embed-multilingual-v3.0", "cohere/embed-english-v3.0",
+    "voyage-code-2", "voyage-large-2",
+    
+    # --- Modèles Ollama fréquents ---
+    "mxbai-embed-large", "snowflake-arctic-embed",
+    
+    # --- Noms génériques de fallback ---
+    "default", "embedding", "embeddings", "model"
+]
+
+print(f"Début du scan de {len(modeles_a_tester)} modèles...\n")
+
+modeles_decouverts = []
+
+for model in modeles_a_tester:
+    payload = {
+        "input": "Ceci est un test pour vérifier la disponibilité du modèle.",
+        "model": model
+    }
+    
+    try:
+        response = requests.post(BASE_URL, headers=headers, json=payload, timeout=5)
+        
+        # Si on obtient 200, le modèle existe et est accepté !
+        if response.status_code == 200:
+            print(f"✅ BINGO ! Modèle disponible : {model}")
+            modeles_decouverts.append(model)
+        
+        # Si erreur de droits (401/403), on prévient
+        elif response.status_code in [401, 403]:
+            print(f"⚠️ Modèle '{model}' trouvé mais accès refusé (401/403).")
+            modeles_decouverts.append(f"{model} (Accès restreint)")
             
-        clean_lines.append(clean_code)
-        line_mapping.append(real_number)
+    except Exception as e:
+        print(f"Erreur de connexion pour {model} : {e}")
         
-    full_clean_text = '\n'.join(clean_lines)
-    
-    # Split the clean text
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        add_start_index=True 
-    )
-    raw_chunks = splitter.create_documents([full_clean_text])
-    
-    parent_documents = []
-    for chunk in raw_chunks:
-        char_start = chunk.metadata['start_index']
-        char_end = char_start + len(chunk.page_content)
-        
-        idx_line_start = full_clean_text.count('\n', 0, char_start)
-        idx_line_end = full_clean_text.count('\n', 0, max(0, char_end - 1))
-        
-        meta = base_metadata.copy()
-        meta.update({
-            "start_line": line_mapping[idx_line_start],
-            "end_line": line_mapping[idx_line_end],
-            # We assign a manual UUID to trace the parent later in our visualization
-            "doc_id": str(uuid.uuid4()) 
-        })
-        
-        parent_documents.append(Document(page_content=chunk.page_content, metadata=meta))
-        
-    return parent_documents
+    # Petite pause pour ne pas surcharger le serveur ou se faire bannir (Rate Limit)
+    time.sleep(0.2) 
 
-# ==========================================
-# 2. SETUP EMBEDDINGS & DATABASES
-# ==========================================
-
-# Using the configuration that bypassed your local server errors (768 dimensions)
-embeddings_model = OpenAIEmbeddings(
-    openai_api_base="http://YOUR_LOCAL_ENDPOINT/v1", 
-    openai_api_key="empty_key", 
-    model="default_local_model", 
-    check_embedding_ctx_length=False # The kill-switch
-)
-
-# Qdrant for Small Vectors (Children)
-qdrant_client = QdrantClient(":memory:")
-COLLECTION_NAME = "c_code_children"
-
-if qdrant_client.collection_exists(COLLECTION_NAME):
-    qdrant_client.delete_collection(COLLECTION_NAME)
-
-qdrant_client.create_collection(
-    collection_name=COLLECTION_NAME,
-    vectors_config=VectorParams(size=768, distance=Distance.COSINE) 
-)
-
-vectorstore = QdrantVectorStore(
-    client=qdrant_client,
-    collection_name=COLLECTION_NAME,
-    embedding=embeddings_model
-)
-
-# RAM Store for Large Texts (Parents)
-store_parents = InMemoryStore()
-
-# ==========================================
-# 3. CONFIGURE PARENT/CHILD RETRIEVER
-# ==========================================
-
-# The child splitter: cuts the parents into tiny 200-char pieces for precise search
-child_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=20)
-
-retriever = ParentDocumentRetriever(
-    vectorstore=vectorstore,
-    docstore=store_parents,
-    child_splitter=child_splitter,
-    parent_splitter=None, # None! Because we already built our Parents manually!
-    search_kwargs={"k": 1} # Return only the top 1 Parent for clarity
-)
-
-# ==========================================
-# 4. INGESTION PROCESS
-# ==========================================
-
-# Dummy C-Code with line numbers
-dummy_c_code = """  10 | #include <stdio.h>
-  11 | 
-  12 | // Configuration Struct
-  13 | struct Config {
-  14 |     int max_retries;
-  15 |     int timeout_ms;
-  16 | };
-  17 | 
-  18 | int initialize_system(struct Config c) {
-  19 |     if (c.max_retries > 5) {
-  20 |         printf("Warning: High retries");
-  21 |     }
-  22 |     return 0;
-  23 | }"""
-
-file_metadata = {"file_name": "system.c", "defines": "MAX_RETRIES 5"}
-
-print("1. Creating logical Parent chunks with line numbers...")
-# We use a small chunk_size (100) just to force multiple parents in this small test
-parents = create_parent_chunks_with_line_numbers(dummy_c_code, file_metadata, chunk_size=100)
-
-print(f"-> Generated {len(parents)} Parent Documents.")
-
-print("2. Ingesting into Retriever (Creating vector children automatically)...")
-# We manually extract the doc_ids to tell LangChain exactly how to link them
-doc_ids = [doc.metadata["doc_id"] for doc in parents]
-retriever.add_documents(parents, ids=doc_ids)
-print("-> Ingestion complete!\n")
-
-# ==========================================
-# 5. VISUALIZATION & RETRIEVAL (Under the Hood)
-# ==========================================
-
-query = "What happens if there are too many max_retries?"
-print(f"=== SEARCH QUERY: '{query}' ===\n")
-
-# A. UNDER THE HOOD: What did Qdrant actually find? (The Child)
-# We search directly in the vectorstore to see the tiny chunk that triggered the match
-raw_vector_results = vectorstore.similarity_search_with_score(query, k=1)
-best_child_doc, child_score = raw_vector_results[0]
-parent_id_triggered = best_child_doc.metadata['doc_id']
-
-print("🔍 1. THE CHILD MATCH (What Qdrant found using Embeddings):")
-print(f"   Score: {child_score:.4f}")
-print(f"   Snippet: '{best_child_doc.page_content}'")
-print(f"   Belongs to Parent ID: {parent_id_triggered}\n")
-
-# B. THE FINAL OUTPUT: What the Retriever actually returns to the LLM? (The Parent)
-# We use the retriever normally
-final_results = retriever.invoke(query)
-final_parent = final_results[0]
-
-print("📦 2. THE PARENT RETURNED (What the LLM will actually read):")
-print(f"   File: {final_parent.metadata['file_name']}")
-print(f"   Lines: {final_parent.metadata['start_line']} to {final_parent.metadata['end_line']}")
-print("   Full Context:")
-print("-" * 40)
-print(final_parent.page_content)
-print("-" * 40)
+print("\n" + "="*40)
+print("RÉSULTAT DU SCAN :")
+if modeles_decouverts:
+    for m in modeles_decouverts:
+        print(f" - {m}")
+else:
+    print("Aucun modèle trouvé. Il est possible que le nom du modèle soit personnalisé par votre entreprise (ex: 'mon-embedding-v1').")
