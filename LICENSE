@@ -19,3 +19,168 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+# RAG Pipeline Developer Manual
+
+Welcome to the comprehensive Developer Manual for the RAG (Retrieval-Augmented Generation) Exploration project. This guide is designed to provide complete, exhaustive documentation for any developer taking over this project in the future. It details the precise architecture, file structure, configuration steps, and operational workflows, along with specific debugging and troubleshooting knowledge required to successfully manage the application.
+
+---
+
+## 1. Project Architecture and Directory Structure
+
+### 1.1. Full Directory Tree (Placeholder)
+*(Replace this block with the output of the `tree /F` command to display the exact project structure)*
+```text
+[INSERT TREE /F OUTPUT HERE]
+```
+
+### 1.2. `notebooks/`
+This folder contains all the Jupyter notebooks used for exploring, testing, and sequentially running the various stages of the pipeline. They follow a strict naming convention: `[Number]_[Function].ipynb`.
+
+**Core Notebooks:**
+*   **`1_indexing_doc.ipynb` & `2_indexing_code.ipynb`**: These notebooks explore and execute the initial ingestion logic. They perform PDF to Markdown transcription, comprehensive corpus cleaning, and metadata extraction. They also provide a visual overview of how the documents/code behave when processed with a random chunking model.
+*   **`3_chunking_strategies.ipynb`**: Tests and compares four distinct chunking strategies: Fixed Size, Recursive, Recursive from code characters splitting, and Token Based. It includes various performance measurements and visual evaluations for each strategy.
+*   **`4_embeddings_comparison.ipynb`**: Evaluates and compares four open-source embedding models: `Jina Embeddings V3`, `Jina Embeddings V2 base code`, `Nomic Embed Text V1.5`, and `Granite Embedding 278M multilingual`. The models are evaluated using multiple metrics and tests.
+*   **`5_retrieval.ipynb`**: Compares different retrieval methods, specifically evaluating: Similarity Search, Dense, MMR, BM25, Hybrid, and Multi Query.
+*   **`6_reranking.ipynb`**: Evaluates the impact of a reranker. It compares the results of using a reranker against a baseline that bypasses it (which simply keeps the top 5 similarity results).
+*   **`7_pipeline.ipynb`**: Executes the full end-to-end RAG pipeline and strictly verifies performance using a RAGAS evaluation benchmark.
+*   **`8_chat.ipynb`**: The final notebook used to verify the system is functionally ready. Unlike notebook 7, there is no benchmarking here; it simply links the RAG components together to test the chat interface. **Crucially, this notebook acts as the master trigger for database re-indexation.** When you add new data, you must run this notebook to wipe/rebuild the index and verify that the whole system functions.
+*   **`test_indexing_doc.ipynb`**: A sandbox notebook used specifically to test the ingestion pipeline when adding new, unrecognized documentation formats.
+
+**Sub-directories:**
+*   **`archive/`**: Contains older scripts and notebooks kept for reference just in case.
+*   **`evaluation/`**: Contains the JSON benchmark file used by the RAGAS evaluation. *(Note: This benchmark is currently incomplete because the team hasn't yet provided all the necessary questions).*
+*   **`results/`**: Stores the output results and metrics from the 6 comparison phases executed in the notebooks.
+*   **`utils/`**: Contains two Python helper files (`display.py` and `metrics.py`) designed to facilitate operations and visualizations within the notebooks.
+
+### 1.3. `src/` (Source Code)
+The main execution logic of the project.
+*   **`embeddings/`**: Module containing all logic related to embedding models.
+*   **`evaluation/`**: Module containing evaluation logic for the pipeline.
+*   **`ingestion/`**: Contains the scripts responsible for preparing data. 
+    *   *Code ingestion scripts:* `code_chunker.py`, `code_cleaner.py`, `code_file_loader.py`, `code_metadata_extractor.py`.
+    *   *Doc ingestion scripts:* `doc_chunker.py`, `doc_cleaner.py`, `doc_file_loader.py`.
+    *   *Testing script:* `test_doc_cleaner.py` (Crucial for adding new documentation).
+*   **`retrieval/`**: Module containing all logic related to the retrieval step.
+*   **`public/`**: Contains a screenshot of the interface. This screenshot is displayed in the Chainlit README (`chainlit.md`) which serves as the actual user manual.
+*   **`cache_tiktoken/`**: A folder designed to cache the `tiktoken` tokenizer offline. This is strictly necessary because counting tokens is a prerequisite for the Token Based chunking method.
+*   **`.env`**: Contains environment variables. Only `CHAINLIT_AUTH_SECRET` is stored here.
+*   **`app.py`**: The complete Chainlit application.
+*   **`chainlit.md`**: The welcome screen markdown serving as the non-developer, "lambda user" manual for the interface.
+*   **`config.py`**: The central configuration file managing paths, models used, and server configurations.
+*   **`data_layer.py`**: The data access layer, left largely unchanged.
+*   **`pipeline.py`**: The main RAG pipeline matching the local setup.
+*   **`run.py`**: The entry point to launch the complete server. 
+    *   *Note on Proxying:* Because of enterprise proxy constraints, this script includes a `PassProxyPrefixMiddleware`. It routes local traffic on port `8000` but intercepts it by prepending the prefix `/paul/proxy/8000`. There is no global proxy variable; the proxy is hardcoded exclusively within this file.
+
+### 1.4. Data and Configuration Directories
+*   **`doc/`**: Holds the documentation to be indexed. Documents are stored in PDF and Markdown format, utilizing the `pymupdf4llm` module for extraction.
+*   **`code/`**: Holds all the raw codebase files (e.g., `.c`, `.h`, `.py` files) that need to be indexed. To prepare code for ingestion, developers simply copy-paste the required files into this folder.
+*   **`models/`**: The local repository where Hugging Face models are manually downloaded and stored for offline use.
+*   **`config/`**: Contains core system and pipeline configs:
+    *   **Certificate**: Required to maintain network access within the enterprise environment.
+    *   **`default.yaml`**: The standard definition of the default RAG pipeline.
+    *   **`models.yaml`**: A comprehensive registry of all usable models and their parameters/characteristics.
+
+### 1.5. Complementary Project Documentation
+This developer manual focuses strictly on operational and technical execution. For a complete understanding of the project, developers **must** cross-reference this document with:
+1.  **The Lambda User Manual (`chainlit.md`):** Explains how to interact with the final UI.
+2.  **The Internship Report (Rapport de Stage):** Contains the extensive theoretical background, architectural decisions, and conceptual logic underpinning the entire project.
+
+---
+
+## 2. Setup, Execution & Re-indexing
+
+### 2.1. System Requirements & Environment
+*   **Python Version:** `3.12.8`
+*   **PyTorch/CUDA:** Due to specific GPU compatibility issues on the host machine, PyTorch was deliberately downgraded to version `2.4.1`. This specific version logic is maintained in `requirements.txt`.
+*   **Versioning:** The project was developed directly in the environment without access to a Git equivalent. There is no repository versioning history to consult.
+
+### 2.2. Launching the Application
+To run the server or the pipeline, **you must execute the command from within the `src/` directory.**
+```bash
+cd src
+python run.py
+```
+Launching `run.py` automatically initializes the server locally on port 8000, seamlessly managing the enterprise proxy routing (``). All logs for the application are pushed directly to the console where `run.py` is launched. There is no specific "Debug" mode as the standard logging is already extremely exhaustive.
+
+### 2.3. Logical Architecture (The Chat Workflow)
+To understand the logical data flow of the application, review the `8_chat.ipynb` notebook. The pipeline executes sequentially as follows:
+1.  **Setup:** Paths, config loading, and initialization of embedding/LLM models.
+2.  **Ingestion:** Loading the corpus (documents & code) and building the vector index.
+3.  **Pipeline Construction:** Assembling the RAG pipeline components.
+4.  **Execution:** Querying the complete RAG pipeline directly to ensure everything interfaces correctly.
+
+### 2.4. Re-indexing Data
+If the source data changes (e.g., adding new code or documentation), you must rebuild the index. 
+
+**Important:** Do *not* rerun the `1_indexing_doc.ipynb` or `2_indexing_code.ipynb` notebooks for this. Instead, you must run **`notebooks/8_chat.ipynb`**. 
+
+The `8_chat.ipynb` notebook is responsible for executing the complete re-indexation of the database from scratch. You modify it if necessary, and execute it to immediately verify that the entire pipeline and chat interface function correctly with the newly indexed data.
+
+### 2.5. The Qdrant Database
+All parsed vectors and metadata are stored in Qdrant. 
+*   **Qdrant Address:** `[INSERT QDRANT ADDRESS HERE]`
+*   Use this address to inspect collections and verify that your indexing jobs have properly populated the database.
+
+---
+
+## 3. Extending the Project: Adding New Data
+
+### 3.1. Adding New Code
+Adding code to the vector index is fully automated.
+1.  Copy-paste your new files (e.g., `.c`, `.h`, `.py`) into the `code/` directory.
+2.  Relaunch **`notebooks/8_chat.ipynb`**. The ingestion logic will automatically process everything in the `code/` directory, rebuilding the index and allowing you to test retrieval immediately.
+
+### 3.2. Adding New Documentation
+Unlike code, documentation format is highly variable (different headers, footers, and structural layouts). Adding new documentation requires manual intervention.
+1.  Place the new document in the `doc/` folder.
+2.  Open `notebooks/test_indexing_doc.ipynb`. Use this notebook as your testing ground.
+3.  Modify **`src/ingestion/test_doc_cleaner.py`**. *This is the ONLY file you should need to modify.* You must adapt the Python Regular Expressions (regex) within this file to accurately strip out the specific headers and footers unique to this new document.
+4.  Once the output in the test notebook is perfectly clean, migrate your newly validated regexes/cleaning logic over to `src/ingestion/doc_cleaner.py`.
+5.  Finally, launch **`notebooks/8_chat.ipynb`** to execute the global re-indexation with your new documentation and verify its proper integration.
+
+---
+
+## 4. Model Management and Configuration
+
+If you need to change active models, swap variables, or alter pipeline behavior, you must modify `src/config.py` and `config/models.yaml`.
+
+### 4.1. Adding New Offline Models (Hugging Face)
+Since the project relies on local offline models stored in the `models/` directory, adding a new model requires a strict offline-compatibility check.
+
+1.  **Download:** Go to the Hugging Face repository of the model. Download **all** associated files into a new subdirectory within `models/`.
+2.  **Verify Independence (CRITICAL):** Before deploying, test the downloaded model on a *separate computer with internet access*. Your goal is to ensure the model does not try to sneakily ping external URLs for missing configurations. If it demands standard pip libraries, install them via `pip install`, but guarantee no external *model files* are dynamically called.
+3.  **Modify `config.json` (`automap`):** For custom model architectures (like `jina-embeddings-v2-base-code`), Hugging Face's `config.json` uses an `automap` block that points to remote code. **You must change these to point to your local files.**
+    *   *Example:* Look at the existing `models/jina-embeddings-v2-base-code` implementation. In its `config.json`, the variables `autoconfig`, `automodel`, `automodel_for_masked_lm`, and `automodel_for_sequence_classification` were heavily modified to reference the locally downloaded `modeling_bert.py` script. This guarantees 100% offline functionality.
+
+---
+
+## 5. Coding Standards & Maintenance
+
+*   **Formatting:** Maintain the stylistic consistency of the files you are modifying.
+*   **Testing:** There are currently no automated unit tests. All testing is conducted functionally via the notebooks (specifically `8_chat.ipynb`).
+*   **Environment Reset:** If the GPU has been modified, or if the Python base environment has unexpectedly reset itself to defaults, navigate to the project root and execute `pip install -r requirements.txt`. Then relaunch your notebooks (specifically `8_chat.ipynb`) and `run.py` to verify functionality.
+
+---
+
+## 6. Troubleshooting & Escalation Contacts
+
+### 6.1. GPU VRAM Overload (6GB Limit)
+The machine driving this project possesses a GPU with approximately 6GB of VRAM. It is incredibly easy to overload this capacity, particularly when comparing embeddings or loading multiple LLMs simultaneously.
+
+*   **Identifying the Error:** You will rarely receive an explicit "Out of Memory" error. Instead, the crash often manifests as a generic, highly obscure `assert` failure from a deep Python library dependency. If you encounter an unexplainable `assert` error while loading models, assume the VRAM is full.
+*   **The Cause:** Launching too many heavy models in quick succession without clearing them from memory.
+*   **The Fix:**
+    1.  Open your terminal.
+    2.  Execute the command `nvidia-smi`.
+    3.  Identify the Python processes holding the GPU hostage.
+    4.  Kill these processes (using `taskkill` or `kill`, depending on the terminal) to completely reset the VRAM.
+    5.  Review your code to limit concurrent model loading, then restart your notebook/server.
+
+### 6.2. Network & Infrastructure Escalation
+If the server crashes critically or there is a major architectural disruption, escalate the issue according to the nature of the failure:
+
+*   **Hosting, VS Code, or Qdrant Database issues:** Contact ****.
+*   **Mistral API issues:** Note that the Mistral API does *not* run locally. If the API fails or is unreachable, contact ****.
+*   **General Notification:** Regardless of the type of crash, always contact **** to keep him informed of the server's status and any downtime.
